@@ -1,0 +1,123 @@
+name: Deploy — My EXtreme Trainer
+
+on:
+  push:
+    branches: [main, master]
+
+jobs:
+  deploy:
+    name: Build & Deploy (Laravel + Next.js)
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. PHP setup ─────────────────────────────────────────────
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, bcmath, pdo, pdo_mysql, xml, curl, zip, intl
+          coverage: none
+
+      # ── 3. Laravel dependencies ──────────────────────────────────
+      - name: Install Composer dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+      # ── 4. Node setup ────────────────────────────────────────────
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      # ── 5. Next.js build ─────────────────────────────────────────
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Next.js
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+        run: npm run build
+
+      # ── 6. Deploy Laravel via SSH ────────────────────────────────
+      - name: Deploy Laravel backend
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+          LARAVEL_DIR: ${{ secrets.LARAVEL_PATH }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: BRANCH_NAME,LARAVEL_DIR
+          script: |
+            set -e
+            cd "$LARAVEL_DIR"
+
+            echo "==> Pulling latest code..."
+            git pull origin "$BRANCH_NAME"
+
+            echo "==> Installing PHP dependencies..."
+            composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+            echo "==> Running migrations..."
+            php artisan migrate --force
+
+            echo "==> Clearing and caching..."
+            php artisan config:clear
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            php artisan event:cache
+
+            echo "==> Storage link..."
+            php artisan storage:link --force
+
+            echo "==> Permissions..."
+            chmod -R 775 storage bootstrap/cache
+
+            echo "==> Queue restart..."
+            php artisan queue:restart
+
+            echo "==> Laravel deployed!"
+
+      # ── 7. Deploy Next.js via SSH ────────────────────────────────
+      - name: Deploy Next.js frontend
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+          NEXTJS_DIR: ${{ secrets.NEXTJS_PATH }}
+          API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: BRANCH_NAME,NEXTJS_DIR,API_URL
+          script: |
+            set -e
+            cd "$NEXTJS_DIR"
+
+            echo "==> Pulling latest code..."
+            git pull origin "$BRANCH_NAME"
+
+            echo "==> Installing dependencies..."
+            npm ci
+
+            echo "==> Building Next.js..."
+            NEXT_PUBLIC_API_URL="$API_URL" npm run build
+
+            echo "==> Restarting with PM2..."
+            pm2 restart myextremetrainer-frontend --update-env || \
+              pm2 start npm --name "myextremetrainer-frontend" -- start
+
+            pm2 save
+
+            echo "==> Next.js deployed!"
