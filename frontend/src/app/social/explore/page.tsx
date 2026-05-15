@@ -2,11 +2,10 @@
 
 import { useState } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
-import { Avatar } from '@/components/ui/Avatar';
-import { Button } from '@/components/ui/Button';
 import { mockMembers, mockPosts } from '@/lib/mockData';
-import { Search, X, TrendingUp, Users, Hash, ChevronLeft } from 'lucide-react';
+import { Search, X, TrendingUp, Users, Hash, ChevronLeft, UserCheck, Users2 } from 'lucide-react';
 import Link from 'next/link';
+import { useSocialStore } from '@/store/socialStore';
 
 const trendingTags = [
   { tag: 'ChestDay', posts: 1240 },
@@ -19,9 +18,7 @@ const trendingTags = [
 
 export default function ExplorePage() {
   const [query, setQuery] = useState('');
-  const [following, setFollowing] = useState<Record<string, boolean>>(
-    Object.fromEntries(mockMembers.map(m => [m.id, m.isFollowing]))
-  );
+  const { followedIds, toggleFollow } = useSocialStore();
 
   const filtered = query
     ? mockMembers.filter(m =>
@@ -31,12 +28,10 @@ export default function ExplorePage() {
       )
     : mockMembers;
 
-  const toggleFollow = (id: string) => setFollowing(f => ({ ...f, [id]: !f[id] }));
-
   return (
     <DashboardShell>
-      <div className="max-w-xl mx-auto px-4 py-6">
-
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        {/* Search bar */}
         <div className="flex items-center gap-3 mb-5">
           <Link href="/social">
             <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/[0.07] hover:border-[#F87404]/40 transition-colors">
@@ -62,7 +57,6 @@ export default function ExplorePage() {
 
         {!query && (
           <>
-            {/* Trending Topics */}
             <div className="mb-6">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp size={16} className="text-[#F87404]" />
@@ -83,63 +77,98 @@ export default function ExplorePage() {
               </div>
             </div>
 
-            {/* Photo Grid - Explore */}
             <div className="mb-6">
               <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-3">Recent Posts</h3>
               <div className="grid grid-cols-3 gap-1">
-                {mockPosts.filter(p => p.images.length > 0).flatMap(p => p.images).concat(
-                  mockPosts.filter(p => p.images.length > 0).flatMap(p => p.images)
-                ).slice(0, 9).map((img, i) => (
-                  <div key={i} className={`aspect-square overflow-hidden rounded-lg ${i === 0 ? 'col-span-2 row-span-2' : ''}`}>
-                    <img src={img} alt="" className="w-full h-full object-cover hover:scale-105 transition-transform cursor-pointer" />
-                  </div>
-                ))}
+                {mockPosts
+                  .filter(p => p.images.length > 0)
+                  .flatMap(p => p.images)
+                  .concat(mockPosts.filter(p => p.images.length > 0).flatMap(p => p.images))
+                  .slice(0, 9)
+                  .map((img, i) => (
+                    <div key={i} className={`aspect-square overflow-hidden rounded-lg ${i === 0 ? 'col-span-2 row-span-2' : ''}`}>
+                      <img src={img} alt="" className="w-full h-full object-cover hover:scale-105 transition-transform cursor-pointer" />
+                    </div>
+                  ))}
               </div>
             </div>
           </>
         )}
 
-        {/* Members */}
         <div>
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-4">
             <Users size={16} className="text-[#004AAD]" />
             <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
               {query ? `Results for "${query}"` : 'Suggested Members'}
             </h3>
+            <span className="ml-auto text-xs text-gray-400">{filtered.length} members</span>
           </div>
-          <div className="space-y-3">
-            {filtered.map(member => (
-              <div key={member.id} className="flex items-center gap-3 p-3 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] shadow-sm">
-                <Link href={`/social/${member.username}`}>
-                  <Avatar src={member.avatar} name={member.name} online={member.isOnline} />
-                </Link>
-                <div className="flex-1 min-w-0">
-                  <Link href={`/social/${member.username}`}>
-                    <div className="font-semibold text-gray-900 dark:text-white text-sm hover:text-[#F87404] transition-colors truncate">{member.name}</div>
-                  </Link>
-                  <div className="text-xs text-gray-400 truncate">@{member.username} · {member.goal}</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {member.followers.toLocaleString()} followers
+
+          <div className="grid grid-cols-2 gap-4">
+            {filtered.map(member => {
+              const isFollowed = followedIds.has(member.id);
+              return (
+                <div key={member.id} className="bg-white dark:bg-[#1a1a1a] rounded-3xl border border-gray-100 dark:border-white/[0.07] overflow-hidden shadow-sm hover:shadow-md hover:border-[#F87404]/20 transition-all">
+                  <div className="relative h-20">
+                    <img src={member.coverPhoto} alt="" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/20" />
+                  </div>
+                  <div className="flex flex-col items-center px-3 pb-4">
+                    <div className="-mt-8 mb-2 relative">
+                      <Link href={`/social/${member.username}`}>
+                        <div className="w-16 h-16 rounded-full border-4 border-white dark:border-[#1a1a1a] overflow-hidden shadow-md">
+                          <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
+                        </div>
+                      </Link>
+                      {member.isOnline && (
+                        <span className="absolute bottom-1 right-1 w-3.5 h-3.5 rounded-full bg-green-400 border-2 border-white dark:border-[#1a1a1a]" />
+                      )}
+                    </div>
+                    <Link href={`/social/${member.username}`} className="group">
+                      <div className="font-semibold text-gray-900 dark:text-white text-sm text-center group-hover:text-[#F87404] transition-colors leading-tight">{member.name}</div>
+                    </Link>
+                    <div className="text-xs text-gray-400 text-center mt-0.5">@{member.username}</div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 text-center mt-1.5 bg-gray-50 dark:bg-white/[0.05] px-2.5 py-0.5 rounded-full">{member.goal}</div>
+                    <div className="flex items-center gap-3 mt-2.5 mb-1">
+                      <div className="text-center">
+                        <div className="text-xs font-bold text-gray-900 dark:text-white">{member.followers >= 1000 ? `${(member.followers / 1000).toFixed(1)}k` : member.followers}</div>
+                        <div className="text-[10px] text-gray-400">followers</div>
+                      </div>
+                      <div className="w-px h-5 bg-gray-100 dark:bg-white/10" />
+                      <div className="text-center">
+                        <div className="text-xs font-bold text-gray-900 dark:text-white">{member.friends}</div>
+                        <div className="text-[10px] text-gray-400">friends</div>
+                      </div>
+                    </div>
+                    {member.mutualConnections > 0 && (
+                      <div className="flex items-center gap-1 text-[11px] text-gray-400 mb-2.5">
+                        <Users2 size={11} className="text-[#F87404]" />
+                        <span>{member.mutualConnections} mutual connections</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => toggleFollow(member.id)}
+                      className={`w-full py-2 rounded-xl text-xs font-semibold transition-all mt-1 ${
+                        isFollowed
+                          ? 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10'
+                          : 'bg-[#F87404] text-white hover:bg-[#FF5C04] shadow-sm'
+                      }`}
+                    >
+                      {isFollowed ? <span className="flex items-center justify-center gap-1"><UserCheck size={12} /> Following</span> : '+ Follow'}
+                    </button>
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant={following[member.id] ? 'outline' : 'primary'}
-                  onClick={() => toggleFollow(member.id)}
-                >
-                  {following[member.id] ? 'Following' : 'Follow'}
-                </Button>
-              </div>
-            ))}
-            {filtered.length === 0 && (
-              <div className="text-center py-12">
-                <Users size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-                <p className="text-sm text-gray-400">No members found for &ldquo;{query}&rdquo;</p>
-              </div>
-            )}
+              );
+            })}
           </div>
-        </div>
 
+          {filtered.length === 0 && (
+            <div className="text-center py-12">
+              <Users size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+              <p className="text-sm text-gray-400">No members found for &ldquo;{query}&rdquo;</p>
+            </div>
+          )}
+        </div>
         <div className="h-20" />
       </div>
     </DashboardShell>

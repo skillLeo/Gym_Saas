@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
-import { Badge } from '@/components/ui/Badge';
 import { mockMembers, mockPosts, mockComments } from '@/lib/mockData';
+import { useSocialStore } from '@/store/socialStore';
 import {
   ChevronLeft, MessageCircle, Heart, MoreHorizontal, Grid3X3,
   MapPin, Dumbbell, Trophy, Flame, Calendar, UserPlus, UserCheck,
   Camera, Link2, Share2, Check, Users, Eye, ThumbsUp, Bookmark,
-  MessageSquare, Star, Bell, Flag
+  Star, Bell,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -29,9 +29,9 @@ const communityPhotos = [
 export default function UserProfilePage() {
   const params = useParams();
   const username = params?.username as string;
+  const { toggleFollow, isFollowing } = useSocialStore();
 
   const member = mockMembers.find(m => m.username === username) || mockMembers[0];
-  const [isFollowing, setIsFollowing] = useState(member.isFollowing);
   const [isFriend, setIsFriend] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('stream');
@@ -161,15 +161,15 @@ export default function UserProfilePage() {
               </button>
 
               <button
-                onClick={() => setIsFollowing(!isFollowing)}
+                onClick={() => toggleFollow(member.id)}
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                  isFollowing
+                  isFollowing(member.id)
                     ? 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/20'
                     : 'bg-gradient-to-r from-[#F87404] to-[#FF5C04] text-white shadow-md hover:shadow-orange-500/25 hover:shadow-lg'
                 }`}
               >
-                {isFollowing ? <Check size={15} /> : <Bell size={15} />}
-                <span>{isFollowing ? 'Following' : 'Follow'}</span>
+                {isFollowing(member.id) ? <Check size={15} /> : <Bell size={15} />}
+                <span>{isFollowing(member.id) ? 'Following' : 'Follow'}</span>
               </button>
             </div>
           </div>
@@ -325,42 +325,43 @@ export default function UserProfilePage() {
 
                   {/* Action bar */}
                   <div className="flex items-center border-t border-gray-100 dark:border-white/[0.07]">
-                    {/* Like with reaction picker */}
-                    <div className="relative flex-1">
+                    {/* Like with reaction picker — bridge prevents gap flicker */}
+                    <div className="relative flex-1"
+                      onMouseEnter={() => setShowReactionPicker(post.id)}
+                      onMouseLeave={() => setShowReactionPicker(null)}
+                    >
                       <button
-                        onMouseEnter={() => setShowReactionPicker(post.id)}
-                        onMouseLeave={() => setShowReactionPicker(null)}
                         onClick={() => toggleLike(post.id)}
                         className={`w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.04] ${
                           post.localLiked ? 'text-[#F87404]' : 'text-gray-500 dark:text-gray-400'
                         }`}
                       >
                         {activeReaction[post.id]
-                          ? <span className="text-base">{activeReaction[post.id]}</span>
+                          ? <span className="text-base leading-none">{activeReaction[post.id]}</span>
                           : <ThumbsUp size={16} fill={post.localLiked ? 'currentColor' : 'none'} />
                         }
-                        <span>{activeReaction[post.id] ? activeReaction[post.id] === '👍' ? 'Like' : activeReaction[post.id] === '❤️' ? 'Love' : activeReaction[post.id] === '🔥' ? 'Fire' : 'React' : 'Like'}</span>
+                        <span>{activeReaction[post.id] === '👍' ? 'Like' : activeReaction[post.id] === '❤️' ? 'Love' : activeReaction[post.id] === '🔥' ? 'Fire' : activeReaction[post.id] ? 'React' : 'Like'}</span>
                       </button>
                       {showReactionPicker === post.id && (
-                        <div
-                          className="absolute bottom-full left-2 mb-2 flex items-center gap-1 px-3 py-2 bg-white dark:bg-[#1e1e1e] rounded-2xl shadow-xl border border-gray-100 dark:border-white/10 z-20"
-                          onMouseEnter={() => setShowReactionPicker(post.id)}
-                          onMouseLeave={() => setShowReactionPicker(null)}
-                        >
-                          {reactionEmojis.map(emoji => (
-                            <button key={emoji}
-                              onClick={() => {
-                                setActiveReaction(prev => ({ ...prev, [post.id]: emoji }));
-                                setShowReactionPicker(null);
-                                setPosts(prev => prev.map(p =>
-                                  p.id === post.id ? { ...p, localLiked: true, localLikes: p.localLiked ? p.localLikes : p.localLikes + 1 } : p
-                                ));
-                              }}
-                              className="text-xl hover:scale-125 transition-transform active:scale-95 w-8 h-8 flex items-center justify-center"
-                            >
-                              {emoji}
-                            </button>
-                          ))}
+                        <div className="absolute bottom-full left-2 z-20">
+                          <div className="flex items-center gap-1 px-3 py-2 bg-white dark:bg-[#1e1e1e] rounded-2xl shadow-xl border border-gray-100 dark:border-white/10 mb-1">
+                            {reactionEmojis.map(emoji => (
+                              <button key={emoji}
+                                onClick={() => {
+                                  setActiveReaction(prev => ({ ...prev, [post.id]: emoji }));
+                                  setShowReactionPicker(null);
+                                  setPosts(prev => prev.map(p =>
+                                    p.id === post.id ? { ...p, localLiked: true, localLikes: p.localLiked ? p.localLikes : p.localLikes + 1 } : p
+                                  ));
+                                }}
+                                className="text-xl hover:scale-125 transition-transform active:scale-95 w-8 h-8 flex items-center justify-center"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                          {/* Invisible bridge: fills gap between popup and button so onMouseLeave doesn't fire */}
+                          <div className="h-2" />
                         </div>
                       )}
                     </div>
@@ -551,26 +552,43 @@ export default function UserProfilePage() {
               </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {mockMembers.map(m => (
-                <Link key={m.id} href={`/social/${m.username}`}>
-                  <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer">
+              {mockMembers.map(m => {
+                const following = isFollowing(m.id);
+                return (
+                  <div key={m.id} className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
                     <div className="h-20 bg-gradient-to-br from-[#F87404]/20 to-[#FF5C04]/10 relative">
                       {m.coverPhoto && <img src={m.coverPhoto} alt="" className="w-full h-full object-cover" />}
                     </div>
                     <div className="px-3 pb-3 -mt-7">
-                      <div className="relative w-14 h-14 mb-2">
-                        <img src={m.avatar} alt={m.name} className="w-14 h-14 rounded-full object-cover ring-3 ring-white dark:ring-[#1a1a1a]" />
-                        {m.isOnline && <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-green-500 ring-2 ring-white dark:ring-[#1a1a1a]" />}
+                      <Link href={`/social/${m.username}`} className="block">
+                        <div className="relative w-14 h-14 mb-2">
+                          <img src={m.avatar} alt={m.name} className="w-14 h-14 rounded-full object-cover ring-2 ring-white dark:ring-[#1a1a1a]" />
+                          {m.isOnline && <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-green-500 ring-2 ring-white dark:ring-[#1a1a1a]" />}
+                        </div>
+                        <div className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-1">{m.name}</div>
+                        <div className="text-xs text-gray-400 mb-2.5">@{m.username}</div>
+                      </Link>
+                      <div className="flex gap-1.5">
+                        <Link href={`/social/${m.username}`} className="flex-1">
+                          <button className="w-full py-1.5 rounded-xl text-xs font-semibold bg-[#F87404]/10 text-[#F87404] hover:bg-[#F87404]/20 transition-colors">
+                            Profile
+                          </button>
+                        </Link>
+                        <button
+                          onClick={() => toggleFollow(m.id)}
+                          className={`flex-1 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+                            following
+                              ? 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/20'
+                              : 'bg-[#004AAD]/10 text-[#004AAD] hover:bg-[#004AAD]/20'
+                          }`}
+                        >
+                          {following ? 'Following' : 'Follow'}
+                        </button>
                       </div>
-                      <div className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-1">{m.name}</div>
-                      <div className="text-xs text-gray-400 mb-2.5">@{m.username}</div>
-                      <button className="w-full py-1.5 rounded-xl text-xs font-semibold bg-[#F87404]/10 text-[#F87404] hover:bg-[#F87404]/20 transition-colors">
-                        View Profile
-                      </button>
                     </div>
                   </div>
-                </Link>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -578,21 +596,31 @@ export default function UserProfilePage() {
         {/* FOLLOWERS TAB */}
         {activeTab === 'followers' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
-            {mockMembers.map(m => (
-              <div key={m.id} className="flex items-center gap-3 p-3.5 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] shadow-sm">
-                <Link href={`/social/${m.username}`}>
-                  <img src={m.avatar} alt={m.name} className="w-12 h-12 rounded-full object-cover shrink-0 hover:scale-105 transition-transform" />
-                </Link>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{m.name}</div>
-                  <div className="text-xs text-gray-400 truncate">@{m.username}</div>
-                  <div className="text-[10px] text-gray-400 mt-0.5">{m.followers.toLocaleString()} followers</div>
+            {mockMembers.map(m => {
+              const followed = isFollowing(m.id);
+              return (
+                <div key={m.id} className="flex items-center gap-3 p-3.5 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] shadow-sm">
+                  <Link href={`/social/${m.username}`}>
+                    <img src={m.avatar} alt={m.name} className="w-12 h-12 rounded-full object-cover shrink-0 hover:scale-105 transition-transform" />
+                  </Link>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{m.name}</div>
+                    <div className="text-xs text-gray-400 truncate">@{m.username}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">{m.followers.toLocaleString()} followers</div>
+                  </div>
+                  <button
+                    onClick={() => toggleFollow(m.id)}
+                    className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
+                      followed
+                        ? 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10'
+                        : 'bg-[#F87404]/10 text-[#F87404] hover:bg-[#F87404]/20'
+                    }`}
+                  >
+                    {followed ? 'Following' : 'Follow back'}
+                  </button>
                 </div>
-                <button className="shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#F87404]/10 text-[#F87404] hover:bg-[#F87404]/20 transition-colors whitespace-nowrap">
-                  Follow back
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

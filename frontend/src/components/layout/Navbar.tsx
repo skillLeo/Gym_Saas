@@ -54,7 +54,7 @@ export function Navbar() {
             <Link
               key={href}
               href={href}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              className={`px-2.5 py-1.5 rounded-lg text-[13px] font-medium whitespace-nowrap transition-all ${
                 isActive(href)
                   ? 'bg-[#F87404]/10 text-[#F87404] dark:bg-[#F87404]/15'
                   : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.06]'
@@ -65,11 +65,11 @@ export function Navbar() {
           ))}
           {role === 'admin' && (
             <>
-              <Link href="/admin" className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all ${isActive('/admin') && !isActive('/admin/api-keys') ? 'bg-blue-500/10 text-blue-500' : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-white/[0.06]'}`}>
-                <Shield size={14} /> Admin
+              <Link href="/admin" className={`px-2.5 py-1.5 rounded-lg text-[13px] font-medium whitespace-nowrap flex items-center gap-1.5 transition-all ${isActive('/admin') && !isActive('/admin/api-keys') ? 'bg-blue-500/10 text-blue-500' : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-white/[0.06]'}`}>
+                <Shield size={13} /> Admin
               </Link>
-              <Link href="/admin/api-keys" className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all ${isActive('/admin/api-keys') ? 'bg-blue-500/10 text-blue-500' : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-white/[0.06]'}`}>
-                <Key size={14} /> API Keys
+              <Link href="/admin/api-keys" className={`px-2.5 py-1.5 rounded-lg text-[13px] font-medium whitespace-nowrap flex items-center gap-1.5 transition-all ${isActive('/admin/api-keys') ? 'bg-blue-500/10 text-blue-500' : 'text-gray-600 dark:text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-white/[0.06]'}`}>
+                <Key size={13} /> API Keys
               </Link>
             </>
           )}
