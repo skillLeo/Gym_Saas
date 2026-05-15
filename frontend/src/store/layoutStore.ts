@@ -10,7 +10,7 @@ interface LayoutState {
 
 export const useLayoutStore = create<LayoutState>()(
   persist(
-    (set) => ({ mode: 'topnav', setMode: (mode) => set({ mode }) }),
+    (set) => ({ mode: 'sidebar', setMode: (mode) => set({ mode }) }),
     { name: 'mx-layout' }
   )
 );
