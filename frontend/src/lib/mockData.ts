@@ -101,12 +101,16 @@ export const mockFoodLog = {
   },
 };
 
+const _REF = new Date('2026-06-14');
+const _dAgo = (n: number) => new Date(_REF.getTime() - n * 86400000).toISOString().split('T')[0];
+const _dAhead = (n: number) => new Date(_REF.getTime() + n * 86400000).toISOString().split('T')[0];
+
 export const mockWorkouts = [
   {
     id: 'w1',
     type: 'Strength',
     name: 'Chest & Triceps',
-    date: new Date().toISOString().split('T')[0],
+    date: _dAgo(0),
     duration: 52,
     calories: 380,
     exercises: [
@@ -119,7 +123,7 @@ export const mockWorkouts = [
     id: 'w2',
     type: 'Cardio',
     name: 'Morning Run',
-    date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+    date: _dAgo(1),
     duration: 35,
     calories: 340,
     distance: 3.2,
@@ -129,7 +133,7 @@ export const mockWorkouts = [
     id: 'w3',
     type: 'Strength',
     name: 'Back & Biceps',
-    date: new Date(Date.now() - 172800000).toISOString().split('T')[0],
+    date: _dAgo(2),
     duration: 55,
     calories: 410,
     exercises: [
@@ -377,12 +381,12 @@ export const mockNotifications = [
 ];
 
 export const mockCalendarEvents = [
-  { id: 'e1', title: 'Chest & Triceps Workout', date: new Date().toISOString().split('T')[0], time: '7:00 AM', color: 'red', type: 'workout' },
-  { id: 'e2', title: 'Meal Prep Sunday', date: new Date().toISOString().split('T')[0], time: '3:00 PM', color: 'orange', type: 'meal' },
-  { id: 'e3', title: 'Morning Run', date: new Date(Date.now() + 86400000).toISOString().split('T')[0], time: '6:30 AM', color: 'red', type: 'workout' },
-  { id: 'e4', title: 'Yoga Flow', date: new Date(Date.now() + 86400000).toISOString().split('T')[0], time: '5:00 PM', color: 'blue', type: 'workout' },
-  { id: 'e5', title: 'Nutrition Check-in', date: new Date(Date.now() + 172800000).toISOString().split('T')[0], time: '12:00 PM', color: 'yellow', type: 'appointment' },
-  { id: 'e6', title: 'Back & Biceps', date: new Date(Date.now() + 259200000).toISOString().split('T')[0], time: '7:00 AM', color: 'red', type: 'workout' },
+  { id: 'e1', title: 'Chest & Triceps Workout', date: _dAgo(0), time: '7:00 AM', color: 'red', type: 'workout' },
+  { id: 'e2', title: 'Meal Prep Sunday', date: _dAgo(0), time: '3:00 PM', color: 'orange', type: 'meal' },
+  { id: 'e3', title: 'Morning Run', date: _dAhead(1), time: '6:30 AM', color: 'red', type: 'workout' },
+  { id: 'e4', title: 'Yoga Flow', date: _dAhead(1), time: '5:00 PM', color: 'blue', type: 'workout' },
+  { id: 'e5', title: 'Nutrition Check-in', date: _dAhead(2), time: '12:00 PM', color: 'yellow', type: 'appointment' },
+  { id: 'e6', title: 'Back & Biceps', date: _dAhead(3), time: '7:00 AM', color: 'red', type: 'workout' },
 ];
 
 export const mockAchievements = [
@@ -394,28 +398,36 @@ export const mockAchievements = [
   { id: 'a6', title: 'Personal Record Broken', description: 'Set a new PR on any exercise', date: '', icon: '🏋️', earned: false, poster: null },
 ];
 
+// Seeded pseudo-random — deterministic on server and client (avoids hydration mismatch)
+const sr = (seed: number) => { const x = Math.sin(seed + 1) * 10000; return x - Math.floor(x); };
+const REF = new Date('2026-06-14');
+const daysAgo = (n: number) => new Date(REF.getTime() - n * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const weeksAgo = (n: number) => new Date(REF.getTime() - n * 7 * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const monthsAgo = (n: number) => new Date(REF.getTime() - n * 30 * 86400000).toLocaleDateString('en-US', { month: 'short' });
+
 export const mockNutritionHistory = Array.from({ length: 30 }, (_, i) => ({
-  date: new Date(Date.now() - (29 - i) * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-  calories: Math.floor(Math.random() * 600) + 1500,
-  protein: Math.floor(Math.random() * 60) + 100,
-  carbs: Math.floor(Math.random() * 80) + 140,
-  fat: Math.floor(Math.random() * 30) + 45,
-  water: Math.floor(Math.random() * 4) + 5,
+  date: daysAgo(29 - i),
+  calories: Math.floor(sr(i) * 600) + 1500,
+  protein: Math.floor(sr(i + 30) * 60) + 100,
+  carbs: Math.floor(sr(i + 60) * 80) + 140,
+  fat: Math.floor(sr(i + 90) * 30) + 45,
+  water: Math.floor(sr(i + 120) * 4) + 5,
 }));
 
 export const mockWorkoutHistory = Array.from({ length: 30 }, (_, i) => ({
-  date: new Date(Date.now() - (29 - i) * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-  workouts: Math.random() > 0.35 ? 1 : 0,
-  duration: Math.floor(Math.random() * 30) + 35,
-  calories: Math.floor(Math.random() * 200) + 280,
-  volume: Math.floor(Math.random() * 5000) + 8000,
+  date: daysAgo(29 - i),
+  workouts: sr(i + 200) > 0.35 ? 1 : 0,
+  duration: Math.floor(sr(i + 230) * 30) + 35,
+  calories: Math.floor(sr(i + 260) * 200) + 280,
+  volume: Math.floor(sr(i + 290) * 5000) + 8000,
+  distance: sr(i + 320) > 0.5 ? parseFloat((sr(i + 350) * 5 + 1).toFixed(1)) : 0,
 }));
 
 export const mockBodyStats = Array.from({ length: 12 }, (_, i) => ({
-  date: new Date(Date.now() - (11 - i) * 7 * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-  weight: +(188 - i * 0.25 + (Math.random() - 0.5)).toFixed(1),
-  bodyFat: +(22 - i * 0.15 + (Math.random() - 0.5) * 0.3).toFixed(1),
-  waist: +(34 - i * 0.1 + (Math.random() - 0.5) * 0.2).toFixed(1),
+  date: weeksAgo(11 - i),
+  weight: +(188 - i * 0.25 + (sr(i + 400) - 0.5)).toFixed(1),
+  bodyFat: +(22 - i * 0.15 + (sr(i + 420) - 0.5) * 0.3).toFixed(1),
+  waist: +(34 - i * 0.1 + (sr(i + 440) - 0.5) * 0.2).toFixed(1),
 }));
 
 export const mockAdminStats = {
@@ -428,13 +440,13 @@ export const mockAdminStats = {
   mealsLoggedTotal: 48920,
   workoutsLoggedTotal: 22145,
   memberGrowth: Array.from({ length: 12 }, (_, i) => ({
-    month: new Date(Date.now() - (11 - i) * 30 * 86400000).toLocaleDateString('en-US', { month: 'short' }),
-    members: Math.floor(800 + i * 45 + Math.random() * 30),
-    subscribers: Math.floor(500 + i * 30 + Math.random() * 20),
+    month: monthsAgo(11 - i),
+    members: Math.floor(800 + i * 45 + sr(i + 500) * 30),
+    subscribers: Math.floor(500 + i * 30 + sr(i + 520) * 20),
   })),
   revenueHistory: Array.from({ length: 6 }, (_, i) => ({
-    month: new Date(Date.now() - (5 - i) * 30 * 86400000).toLocaleDateString('en-US', { month: 'short' }),
-    revenue: Math.floor(5000 + i * 550 + Math.random() * 300),
+    month: monthsAgo(5 - i),
+    revenue: Math.floor(5000 + i * 550 + sr(i + 540) * 300),
   })),
 };
 

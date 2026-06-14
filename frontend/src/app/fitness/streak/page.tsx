@@ -20,16 +20,21 @@ const milestones = [
   { days: 365, label: '365-Day Immortal',   emoji: '👑', color: '#10B981', achieved: false },
 ];
 
-// Generate 84 days of activity (12 weeks)
+// Deterministic pseudo-random based on seed (avoids hydration mismatch)
+const seededRand = (seed: number) => {
+  const x = Math.sin(seed + 1) * 10000;
+  return x - Math.floor(x);
+};
+
+// Generate 84 days of activity (12 weeks) — fixed reference date to avoid hydration issues
+const REF_DATE = new Date('2026-06-14');
 const generateActivityGrid = () => {
   const days: { date: string; active: boolean; intensity: number }[] = [];
-  const today = new Date();
   for (let i = 83; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    // last 12 days always active (current streak), random before
-    const active = i < 12 ? true : Math.random() > 0.45;
-    const intensity = active ? Math.floor(Math.random() * 3) + 1 : 0;
+    const d = new Date(REF_DATE);
+    d.setDate(REF_DATE.getDate() - i);
+    const active = i < 12 ? true : seededRand(i) > 0.45;
+    const intensity = active ? Math.floor(seededRand(i + 100) * 3) + 1 : 0;
     days.push({
       date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       active,

@@ -4,8 +4,61 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Sparkles, Shield, User } from 'lucide-react';
-import api from '@/lib/api';
-import { useAuthStore } from '@/store/authStore';
+import { useAuthStore, AuthUser } from '@/store/authStore';
+
+const MOCK_USERS: Record<string, { password: string; user: AuthUser; token: string }> = {
+  'test@myextremetrainer.com': {
+    password: 'password123',
+    token: 'mock-admin-token-xyz',
+    user: {
+      id: 1,
+      name: 'Admin User',
+      email: 'test@myextremetrainer.com',
+      avatar_url: 'https://ui-avatars.com/api/?name=Admin+User&background=0000FF&color=fff',
+      bio: 'Platform administrator',
+      is_admin: true,
+      onboarding_completed: true,
+      subscription_status: 'active',
+      is_on_trial: false,
+      trial_days_remaining: 0,
+      member_since: '2024-01-01',
+      daily_water_goal_glasses: 8,
+      daily_calorie_goal: 2200,
+      daily_protein_goal_g: 150,
+      daily_carbs_goal_g: 220,
+      daily_fat_goal_g: 70,
+    },
+  },
+  'hassam.dev.571@gmail.com': {
+    password: 'password123',
+    token: 'mock-member-token-xyz',
+    user: {
+      id: 2,
+      name: 'Hassam Dev',
+      email: 'hassam.dev.571@gmail.com',
+      avatar_url: 'https://ui-avatars.com/api/?name=Hassam+Dev&background=F87404&color=fff',
+      bio: 'Fitness enthusiast',
+      is_admin: false,
+      onboarding_completed: true,
+      subscription_status: 'trial',
+      is_on_trial: true,
+      trial_days_remaining: 22,
+      trial_ends_at: '2026-07-04',
+      member_since: '2026-06-12',
+      daily_water_goal_glasses: 8,
+      daily_calorie_goal: 2000,
+      daily_protein_goal_g: 130,
+      daily_carbs_goal_g: 200,
+      daily_fat_goal_g: 65,
+    },
+  },
+};
+
+function mockLogin(email: string, password: string): { user: AuthUser; token: string } | null {
+  const entry = MOCK_USERS[email.toLowerCase().trim()];
+  if (!entry || entry.password !== password) return null;
+  return { user: entry.user, token: entry.token };
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,39 +68,29 @@ export default function LoginPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
-  const quickLogin = async (email: string, password: string) => {
+  const doLogin = (email: string, password: string, remember = false) => {
     setErrors({});
     setLoading(true);
-    try {
-      const res = await api.post('/auth/login', { email, password });
-      const { token, user } = res.data.data;
+    setTimeout(() => {
+      const result = mockLogin(email, password);
+      if (!result) {
+        toast.error('Invalid email or password.');
+        setLoading(false);
+        return;
+      }
+      const { user, token } = result;
       setAuth(user, token);
-      document.cookie = `auth_token=${token}; path=/; max-age=86400`;
-      toast.success(`Welcome, ${user.name}!`);
+      document.cookie = `auth_token=${token}; path=/; max-age=${remember ? 2592000 : 86400}`;
+      toast.success(`Welcome${user.is_admin ? '' : ' back'}, ${user.name}!`);
       router.replace(user.is_admin ? '/admin' : (user.onboarding_completed ? '/dashboard' : '/onboarding'));
-    } catch {
-      toast.error('Quick login failed.');
-    } finally { setLoading(false); }
+    }, 400);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const quickLogin = (email: string, password: string) => doLogin(email, password);
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setErrors({});
-    setLoading(true);
-    try {
-      const res = await api.post('/auth/login', { email: form.email, password: form.password });
-      const { token, user } = res.data.data;
-      setAuth(user, token);
-      document.cookie = `auth_token=${token}; path=/; max-age=${form.remember ? 2592000 : 86400}`;
-      toast.success(`Welcome back, ${user.name}!`);
-      router.replace(user.is_admin ? '/admin' : (user.onboarding_completed ? '/dashboard' : '/onboarding'));
-    } catch (err: any) {
-      const data = err.response?.data;
-      if (data?.errors) setErrors(data.errors);
-      else toast.error(data?.error || 'Login failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    doLogin(form.email, form.password, form.remember);
   };
 
   return (

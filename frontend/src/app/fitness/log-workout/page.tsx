@@ -4,24 +4,30 @@ import { useState } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { ChevronLeft, Plus, Trash2, Timer, Flame, Dumbbell, Activity, CheckCircle, ChevronDown } from 'lucide-react';
+import { ChevronLeft, Plus, Trash2, Timer, Flame, Dumbbell, Activity, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 type ExerciseSet = { reps: string; weight: string; done: boolean };
 type Exercise = { id: string; name: string; sets: ExerciseSet[] };
 
-const exerciseLibrary = [
-  'Bench Press', 'Squat', 'Deadlift', 'Pull-ups', 'Push-ups', 'Shoulder Press',
-  'Barbell Row', 'Bicep Curl', 'Tricep Pushdown', 'Leg Press', 'Lat Pulldown',
-  'Incline Press', 'Dumbbell Fly', 'Lunges', 'Plank', 'Romanian Deadlift',
-];
+const exerciseLibraryByGroup: Record<string, string[]> = {
+  Chest: ['Bench Press', 'Incline Press', 'Decline Press', 'Dumbbell Fly', 'Cable Fly', 'Push-ups', 'Chest Dip'],
+  Back: ['Deadlift', 'Pull-ups', 'Barbell Row', 'Lat Pulldown', 'Seated Cable Row', 'T-Bar Row', 'Face Pull'],
+  Legs: ['Squat', 'Leg Press', 'Romanian Deadlift', 'Lunges', 'Leg Curl', 'Leg Extension', 'Calf Raises', 'Hip Thrust'],
+  Shoulders: ['Shoulder Press', 'Lateral Raise', 'Front Raise', 'Arnold Press', 'Rear Delt Fly', 'Upright Row', 'Shrugs'],
+  Arms: ['Bicep Curl', 'Hammer Curl', 'Preacher Curl', 'Tricep Pushdown', 'Skull Crushers', 'Overhead Tricep Extension', 'Dips'],
+  Core: ['Plank', 'Crunches', 'Hanging Leg Raise', 'Russian Twist', 'Cable Crunch', 'Ab Wheel Rollout', 'Mountain Climbers'],
+};
+
 
 const workoutTypes = [
   { id: 'strength', label: 'Strength', icon: Dumbbell, color: '#F87404' },
   { id: 'cardio', label: 'Cardio', icon: Activity, color: '#004AAD' },
   { id: 'hiit', label: 'HIIT', icon: Flame, color: '#FF5C04' },
-  { id: 'flexibility', label: 'Flexibility', icon: Timer, color: '#10B981' },
+  { id: 'yoga', label: 'Yoga', icon: Timer, color: '#7C3AED' },
+  { id: 'pilates', label: 'Pilates', icon: Timer, color: '#EC4899' },
+  { id: 'flexibility', label: 'Stretch', icon: Timer, color: '#10B981' },
 ];
 
 export default function LogWorkoutPage() {
@@ -74,7 +80,9 @@ export default function LogWorkoutPage() {
     setTimeout(() => router.push('/fitness'), 1500);
   };
 
-  const filteredLib = exerciseLibrary.filter(e => e.toLowerCase().includes(exerciseSearch.toLowerCase()));
+  const filteredLib = exerciseSearch
+    ? Object.values(exerciseLibraryByGroup).flat().filter((e: string) => e.toLowerCase().includes(exerciseSearch.toLowerCase()))
+    : null;
 
   return (
     <DashboardShell>
@@ -115,7 +123,7 @@ export default function LogWorkoutPage() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Workout Type</label>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {workoutTypes.map(({ id, label, icon: Icon, color }) => (
                   <button key={id} onClick={() => setWorkoutType(id)}
                     className={`flex flex-col items-center gap-1.5 py-2.5 rounded-xl border-2 transition-all ${workoutType === id ? 'text-white border-transparent' : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400'}`}
@@ -211,15 +219,29 @@ export default function LogWorkoutPage() {
                   <input value={exerciseSearch} onChange={e => setExerciseSearch(e.target.value)}
                     autoFocus placeholder="Search exercises..."
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F87404]/50 text-sm mb-3" />
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {filteredLib.map(name => (
-                      <button key={name} onClick={() => addExercise(name)}
-                        className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-[#F87404]/10 text-gray-900 dark:text-white text-sm transition-colors hover:text-[#F87404]">
-                        {name}
-                      </button>
-                    ))}
+                  <div className="max-h-56 overflow-y-auto space-y-3">
+                    {filteredLib && filteredLib.length > 0 ? (
+                      filteredLib.map((name: string) => (
+                        <button key={name} onClick={() => addExercise(name)}
+                          className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-[#F87404]/10 text-gray-900 dark:text-white text-sm transition-colors hover:text-[#F87404]">
+                          {name}
+                        </button>
+                      ))
+                    ) : (
+                      Object.entries(exerciseLibraryByGroup).map(([group, exercises]) => (
+                        <div key={group}>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-1">{group}</p>
+                          {exercises.map((name: string) => (
+                            <button key={name} onClick={() => addExercise(name)}
+                              className="w-full text-left px-3 py-2 rounded-xl hover:bg-[#F87404]/10 text-gray-800 dark:text-gray-200 text-sm transition-colors hover:text-[#F87404]">
+                              {name}
+                            </button>
+                          ))}
+                        </div>
+                      ))
+                    )}
                   </div>
-                  <button onClick={() => setShowExercisePicker(false)} className="mt-2 text-xs text-gray-400 hover:text-gray-600 w-full text-center">Cancel</button>
+                  <button onClick={() => { setShowExercisePicker(false); setExerciseSearch(''); }} className="mt-2 text-xs text-gray-400 hover:text-gray-600 w-full text-center">Cancel</button>
                 </div>
               </Card>
             ) : (

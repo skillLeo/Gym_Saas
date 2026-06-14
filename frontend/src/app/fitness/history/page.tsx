@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { mockWorkouts, mockWorkoutHistory } from '@/lib/mockData';
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { ChevronLeft, Flame, Clock, Dumbbell, Activity, TrendingUp, Calendar, Filter } from 'lucide-react';
 import Link from 'next/link';
@@ -17,7 +17,7 @@ const rangeMap: Record<Range, number> = { '7D': 7, '30D': 30, '3M': 90 };
 
 export default function WorkoutHistoryPage() {
   const [range, setRange] = useState<Range>('30D');
-  const [activeChart, setActiveChart] = useState<'calories' | 'duration'>('calories');
+  const [activeChart, setActiveChart] = useState<'calories' | 'duration' | 'volume' | 'distance'>('calories');
   const [typeFilter, setTypeFilter] = useState<string>('All');
 
   const sliced = mockWorkoutHistory.slice(-rangeMap[range]);
@@ -112,9 +112,9 @@ export default function WorkoutHistoryPage() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Performance Trend</h3>
               <div className="flex bg-gray-100 dark:bg-white/[0.07] p-0.5 rounded-lg">
-                {(['calories', 'duration'] as const).map(c => (
+                {(['calories', 'duration', 'volume', 'distance'] as const).map(c => (
                   <button key={c} onClick={() => setActiveChart(c)}
-                    className={`px-3 py-1 rounded-md text-xs font-medium capitalize transition-all ${activeChart === c ? 'bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium capitalize transition-all ${activeChart === c ? 'bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>
                     {c}
                   </button>
                 ))}
@@ -123,14 +123,29 @@ export default function WorkoutHistoryPage() {
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(155,155,155,0.1)" />
                   <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#9ca3af' }} />
                   <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey={activeChart} fill={activeChart === 'calories' ? '#F87404' : '#004AAD'}
-                    radius={[3, 3, 0, 0]} name={activeChart === 'calories' ? 'Calories' : 'Duration (min)'} />
+                  <Bar dataKey={activeChart}
+                    fill={activeChart === 'calories' ? '#F87404' : activeChart === 'duration' ? '#004AAD' : activeChart === 'volume' ? '#FF0404' : '#10B981'}
+                    radius={[3, 3, 0, 0]}
+                    name={activeChart === 'calories' ? 'Calories' : activeChart === 'duration' ? 'Duration (min)' : activeChart === 'volume' ? 'Volume (lbs)' : 'Distance (mi)'} />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+            <div className="flex gap-3 mt-3 flex-wrap">
+              {[
+                { key: 'calories', label: 'Calories Burned', color: '#F87404' },
+                { key: 'duration', label: 'Duration', color: '#004AAD' },
+                { key: 'volume', label: 'Volume Lifted', color: '#FF0404' },
+                { key: 'distance', label: 'Cardio Distance', color: '#10B981' },
+              ].map(({ key, label, color }) => (
+                <div key={key} className="flex items-center gap-1.5 text-xs text-gray-400">
+                  <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: color }} />
+                  {label}
+                </div>
+              ))}
             </div>
           </div>
         </Card>
