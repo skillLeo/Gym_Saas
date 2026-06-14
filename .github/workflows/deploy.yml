@@ -38,7 +38,7 @@ jobs:
         with:
           switches: -avz --delete --exclude='.htaccess' --exclude='index.php' --exclude='storage'
           path: frontend/out/
-          remote_path: /home/u290685119/domains/gyms.skillleo.com/public_html/
+          remote_path: /home/u290685119/domains/gyms.skillleo.com/public_html/frontend/out/
           remote_host: ${{ secrets.SSH_HOST }}
           remote_port: ${{ secrets.SSH_PORT }}
           remote_user: ${{ secrets.SSH_USER }}
