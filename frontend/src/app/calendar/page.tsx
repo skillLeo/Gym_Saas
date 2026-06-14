@@ -1,276 +1,566 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { DashboardShell } from '@/components/layout/DashboardShell';
-import { Card } from '@/components/ui/Card';
-import { mockCalendarEvents } from '@/lib/mockData';
+import { mockCalendarEvents, mockMealPlanWeek, mockShoppingListItems, mockTodoItems } from '@/lib/mockData';
 import {
-  ChevronLeft, ChevronRight, Plus, Utensils, ShoppingCart,
-  CheckSquare, X, Clock,
+  ChevronLeft, ChevronRight, Plus, Utensils, ShoppingCart, CheckSquare,
+  X, Clock, CalendarDays, List, Grid3X3, Trash2, Check, BookOpen,
+  Flame, Apple, Dumbbell, Calendar,
 } from 'lucide-react';
 
-const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'];
+// ── Fixed reference – avoids hydration mismatch ──
+const TODAY = '2026-06-14';
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-const eventTypeColor: Record<string, string> = {
-  workout: '#FF0404', meal: '#F87404', appointment: '#004AAD', other: '#10B981',
+type ViewType = 'month' | 'week' | 'agenda';
+type TabKey   = 'calendar' | 'meal-plan' | 'shopping' | 'todos';
+
+const TYPE_STYLE: Record<string, { bg: string; light: string; label: string; icon: React.ReactNode }> = {
+  workout:     { bg: '#FF0404', light: '#FF040415', label: 'Workout',     icon: <Dumbbell size={12} /> },
+  meal:        { bg: '#F87404', light: '#F8740415', label: 'Meal',        icon: <Utensils size={12} /> },
+  appointment: { bg: '#004AAD', light: '#004AAD15', label: 'Appointment', icon: <Calendar size={12} /> },
+  personal:    { bg: '#7C3AED', light: '#7C3AED15', label: 'Personal',    icon: <CalendarDays size={12} /> },
+  other:       { bg: '#10B981', light: '#10B98115', label: 'Other',       icon: <CalendarDays size={12} /> },
 };
 
-type TabKey = 'calendar' | 'meal-plan' | 'shopping' | 'todos';
+const HOURS = Array.from({ length: 16 }, (_, i) => i + 6); // 6 AM – 9 PM
 
-const shoppingList = [
-  { id: 1, item: 'Chicken breast (3 lbs)', checked: true, category: 'Protein' },
-  { id: 2, item: 'Brown rice (2 lbs)', checked: true, category: 'Carbs' },
-  { id: 3, item: 'Broccoli', checked: false, category: 'Veggies' },
-  { id: 4, item: 'Greek yogurt (6-pack)', checked: false, category: 'Protein' },
-  { id: 5, item: 'Almonds (1 lb)', checked: false, category: 'Fats' },
-  { id: 6, item: 'Eggs (2 dozen)', checked: true, category: 'Protein' },
-  { id: 7, item: 'Sweet potatoes', checked: false, category: 'Carbs' },
-  { id: 8, item: 'Spinach (bag)', checked: false, category: 'Veggies' },
-];
+function fmtHour(h: number) {
+  if (h === 0 || h === 12) return `${h === 0 ? 12 : h}${h === 0 ? ' AM' : ' PM'}`;
+  return h > 12 ? `${h - 12} PM` : `${h} AM`;
+}
 
-const todos = [
-  { id: 1, text: 'Complete 4 workouts this week', done: true, priority: 'high' },
-  { id: 2, text: 'Log all meals in food journal', done: false, priority: 'high' },
-  { id: 3, text: 'Drink 8 glasses of water daily', done: false, priority: 'medium' },
-  { id: 4, text: 'Take progress photos on Sunday', done: false, priority: 'medium' },
-  { id: 5, text: 'Schedule check-in with coach', done: true, priority: 'low' },
-  { id: 6, text: 'Prep meals for the week', done: false, priority: 'high' },
-];
+function eventHour(time: string) {
+  const [t, ap] = time.split(' ');
+  const [h] = t.split(':').map(Number);
+  return ap === 'PM' && h !== 12 ? h + 12 : h === 12 && ap === 'AM' ? 0 : h;
+}
 
-const mealPlan = [
-  { day: 'Monday', meals: { Breakfast: 'Scrambled eggs + oats', Lunch: 'Chicken rice bowl', Dinner: 'Salmon + veggies', Snack: 'Greek yogurt' } },
-  { day: 'Tuesday', meals: { Breakfast: 'Protein shake + banana', Lunch: 'Turkey wrap', Dinner: 'Beef stir fry', Snack: 'Almonds' } },
-  { day: 'Wednesday', meals: { Breakfast: 'Overnight oats', Lunch: 'Tuna salad', Dinner: 'Chicken + sweet potato', Snack: 'Apple + PB' } },
-  { day: 'Thursday', meals: { Breakfast: 'Eggs + toast', Lunch: 'Grilled chicken wrap', Dinner: 'Ground turkey + rice', Snack: 'Protein bar' } },
-  { day: 'Friday', meals: { Breakfast: 'Smoothie bowl', Lunch: 'Salmon salad', Dinner: 'Steak + broccoli', Snack: 'Cottage cheese' } },
-];
+function addDays(base: string, n: number) {
+  const d = new Date(base + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().split('T')[0];
+}
+
+function getWeekStart(dateStr: string) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return addDays(dateStr, -d.getDay());
+}
+
+function fmtDate(dateStr: string) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
 
 export default function CalendarPage() {
-  const today = new Date();
-  const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-  const [selectedDate, setSelectedDate] = useState<string>(today.toISOString().split('T')[0]);
-  const [tab, setTab] = useState<TabKey>('calendar');
-  const [shopping, setShopping] = useState(shoppingList);
-  const [todoList, setTodoList] = useState(todos);
-  const [showAddEvent, setShowAddEvent] = useState(false);
+  const [view,         setView]         = useState<ViewType>('month');
+  const [tab,          setTab]          = useState<TabKey>('calendar');
+  const [viewYear,     setViewYear]     = useState(2026);
+  const [viewMonth,    setViewMonth]    = useState(5); // 0-indexed, 5 = June
+  const [selectedDate, setSelectedDate] = useState(TODAY);
+  const [shopping,     setShopping]     = useState(mockShoppingListItems);
+  const [todos,        setTodos]        = useState(mockTodoItems);
+  const [showAdd,      setShowAdd]      = useState(false);
+  const [events,       setEvents]       = useState(mockCalendarEvents);
+  const [newEvent,     setNewEvent]     = useState({ title: '', date: TODAY, time: '07:00', type: 'workout', notes: '' });
+  const [addedItem,    setAddedItem]    = useState('');
+  const [newTodo,      setNewTodo]      = useState('');
 
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  // ── Derived ──
+  const firstDay    = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const weekStart   = getWeekStart(selectedDate);
+  const weekDates   = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-  const getEventsForDate = (dateStr: string) => mockCalendarEvents.filter(e => e.date === dateStr);
-  const selectedEvents = getEventsForDate(selectedDate);
+  const eventsFor = (d: string) => events.filter(e => e.date === d);
+  const selectedEvents = eventsFor(selectedDate);
 
-  const formatSelectedDate = () => {
-    const d = new Date(selectedDate + 'T00:00:00');
-    if (selectedDate === today.toISOString().split('T')[0]) {
-      return `Today, ${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`;
-    }
-    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  };
+  const agendaDates = Array.from({ length: 21 }, (_, i) => addDays(TODAY, i))
+    .filter(d => eventsFor(d).length > 0);
+
+  const totalMealCal = (day: typeof mockMealPlanWeek[0]) =>
+    (day.breakfast?.cal ?? 0) + (day.lunch?.cal ?? 0) + (day.dinner?.cal ?? 0);
+
+  const shoppingByCategory = (['Produce', 'Meat', 'Dairy', 'Pantry'] as const).map(cat => ({
+    cat,
+    items: shopping.filter(i => i.category === cat),
+  }));
+
+  const doneCount  = todos.filter(t => t.done).length;
+  const shoppingDone = shopping.filter(s => s.checked).length;
+
+  function prevMonth() {
+    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
+    else setViewMonth(m => m - 1);
+  }
+  function nextMonth() {
+    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
+    else setViewMonth(m => m + 1);
+  }
+
+  function addEvent() {
+    if (!newEvent.title.trim()) return;
+    setEvents(prev => [...prev, { id: `e-${Date.now()}`, ...newEvent, time: newEvent.time + ' AM' }]);
+    setNewEvent({ title: '', date: TODAY, time: '07:00', type: 'workout', notes: '' });
+    setShowAdd(false);
+  }
+
+  function addShoppingItem() {
+    if (!addedItem.trim()) return;
+    setShopping(prev => [...prev, { id: `s-${Date.now()}`, name: addedItem.trim(), amount: '', category: 'Pantry', checked: false }]);
+    setAddedItem('');
+  }
+
+  function addTodo() {
+    if (!newTodo.trim()) return;
+    setTodos(prev => [...prev, { id: `t-${Date.now()}`, text: newTodo.trim(), done: false, priority: 'medium', dueDate: TODAY }]);
+    setNewTodo('');
+  }
 
   return (
     <DashboardShell>
-      <div className="max-w-3xl mx-auto space-y-5">
+      <div className="max-w-4xl mx-auto space-y-5 pb-6">
 
-        {/* Header */}
+        {/* ── Header ── */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="font-display text-2xl font-black text-gray-900">Calendar</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Plan your fitness &amp; meals</p>
+            <p className="text-sm text-gray-500 mt-0.5">Plan workouts, meals &amp; life</p>
           </div>
-          <button onClick={() => setShowAddEvent(true)} className="flex items-center gap-2 bg-[#F87404] hover:bg-[#e06000] text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-all shadow-md shadow-[#F87404]/25">
+          <button onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 bg-[#F87404] hover:bg-[#e06000] text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-all shadow-md shadow-[#F87404]/25">
             <Plus size={16} /> Add Event
           </button>
         </div>
 
-        {/* Quick nav */}
+        {/* ── Quick nav cards ── */}
         <div className="grid grid-cols-3 gap-3">
-          {[
-            { key: 'meal-plan' as TabKey, icon: Utensils, label: 'Meal Planner', color: '#F87404' },
-            { key: 'shopping' as TabKey, icon: ShoppingCart, label: 'Shopping List', color: '#10B981' },
-            { key: 'todos' as TabKey, icon: CheckSquare, label: 'To-Do List', color: '#004AAD' },
-          ].map(({ key, icon: Icon, label, color }) => (
-            <button key={key} onClick={() => setTab(tab === key ? 'calendar' : key)}
-              className={`flex flex-col items-center gap-2 p-4 bg-white rounded-2xl border transition-all hover:shadow-md ${tab === key ? 'border-[#F87404]/40 bg-[#F87404]/5' : 'border-gray-100 shadow-sm'}`}>
-              <Icon size={22} style={{ color }} />
-              <span className="text-xs font-medium text-gray-700">{label}</span>
+          {([
+            { key: 'meal-plan' as TabKey, icon: Utensils,     label: 'Meal Plan',  color: '#F87404', sub: '7-day plan' },
+            { key: 'shopping'  as TabKey, icon: ShoppingCart, label: 'Shopping',   color: '#10B981', sub: `${shoppingDone}/${shopping.length} done` },
+            { key: 'todos'     as TabKey, icon: CheckSquare,  label: 'To-Do',      color: '#004AAD', sub: `${doneCount}/${todos.length} done` },
+          ] as const).map(({ key, icon: Icon, label, color, sub }) => (
+            <button key={key} onClick={() => setTab(t => t === key ? 'calendar' : key)}
+              className={`flex flex-col items-center gap-1.5 p-4 rounded-2xl border transition-all ${tab === key ? 'border-[#F87404]/40 bg-[#F87404]/5 shadow-sm' : 'border-gray-100 bg-white shadow-sm hover:shadow-md'}`}>
+              <Icon size={20} style={{ color }} />
+              <span className="text-xs font-semibold text-gray-800">{label}</span>
+              <span className="text-[10px] text-gray-400">{sub}</span>
             </button>
           ))}
         </div>
 
+        {/* ══════════════════════ CALENDAR TAB ══════════════════════ */}
         {tab === 'calendar' && (
           <>
-            <Card>
-              {/* Month nav */}
-              <div className="flex items-center justify-between mb-5">
-                <button onClick={() => setCurrentDate(new Date(year, month - 1, 1))} className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
-                  <ChevronLeft size={18} />
+            {/* View switcher */}
+            <div className="flex bg-gray-100 p-1 rounded-xl w-fit">
+              {([
+                { v: 'month'  as ViewType, icon: Grid3X3,     label: 'Month'  },
+                { v: 'week'   as ViewType, icon: CalendarDays, label: 'Week'   },
+                { v: 'agenda' as ViewType, icon: List,         label: 'Agenda' },
+              ] as const).map(({ v, icon: Icon, label }) => (
+                <button key={v} onClick={() => setView(v)}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                  <Icon size={13} /> {label}
                 </button>
-                <h2 className="font-display font-bold text-gray-900">{MONTHS[month]} {year}</h2>
-                <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-              <div className="grid grid-cols-7 mb-2">
-                {DAYS_OF_WEEK.map(d => <div key={d} className="text-center text-xs font-medium text-gray-400 py-1">{d}</div>)}
-              </div>
-              <div className="grid grid-cols-7 gap-y-1">
-                {Array.from({ length: firstDay }).map((_, i) => <div key={`e-${i}`} />)}
-                {Array.from({ length: daysInMonth }).map((_, i) => {
-                  const day = i + 1;
-                  const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                  const isToday = dateStr === today.toISOString().split('T')[0];
-                  const isSelected = dateStr === selectedDate;
-                  const events = getEventsForDate(dateStr);
-                  return (
-                    <button key={day} onClick={() => setSelectedDate(dateStr)}
-                      className={`relative flex flex-col items-center py-2 rounded-xl transition-all ${isSelected ? 'bg-[#F87404] text-white shadow-md shadow-[#F87404]/30' : isToday ? 'bg-[#F87404]/10 text-[#F87404] font-semibold' : 'hover:bg-gray-100 text-gray-700'}`}>
-                      <span className="text-sm font-semibold">{day}</span>
-                      {events.length > 0 && (
-                        <div className="flex gap-0.5 mt-0.5">
-                          {events.slice(0, 3).map(e => (
-                            <div key={e.id} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isSelected ? 'white' : eventTypeColor[e.type] }} />
-                          ))}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </Card>
+              ))}
+            </div>
 
-            {/* Events for selected date */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-900">{formatSelectedDate()}</h3>
-                <span className="text-xs text-gray-400">{selectedEvents.length} event{selectedEvents.length !== 1 ? 's' : ''}</span>
+            {/* ── MONTH VIEW ── */}
+            {view === 'month' && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                {/* Month nav */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                  <button onClick={prevMonth} className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+                    <ChevronLeft size={18} />
+                  </button>
+                  <h2 className="font-display font-bold text-gray-900">{MONTHS[viewMonth]} {viewYear}</h2>
+                  <button onClick={nextMonth} className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
+                    <ChevronRight size={18} />
+                  </button>
+                </div>
+                {/* Day headers */}
+                <div className="grid grid-cols-7 border-b border-gray-100">
+                  {DAYS_SHORT.map(d => (
+                    <div key={d} className="text-center text-[11px] font-semibold text-gray-400 py-2.5">{d}</div>
+                  ))}
+                </div>
+                {/* Days grid */}
+                <div className="grid grid-cols-7">
+                  {Array.from({ length: firstDay }).map((_, i) => (
+                    <div key={`pad-${i}`} className="border-r border-b border-gray-50 h-20" />
+                  ))}
+                  {Array.from({ length: daysInMonth }).map((_, i) => {
+                    const day = i + 1;
+                    const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const isToday    = dateStr === TODAY;
+                    const isSelected = dateStr === selectedDate;
+                    const dayEvents  = eventsFor(dateStr);
+                    return (
+                      <button key={day} onClick={() => setSelectedDate(dateStr)}
+                        className={`relative border-r border-b border-gray-50 h-20 flex flex-col p-1.5 transition-all hover:bg-gray-50 text-left ${isSelected ? 'bg-[#F87404]/5 ring-2 ring-inset ring-[#F87404]/40' : ''}`}>
+                        <span className={`text-[13px] font-semibold w-6 h-6 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-[#F87404] text-white' : isSelected ? 'text-[#F87404]' : 'text-gray-700'}`}>
+                          {day}
+                        </span>
+                        <div className="space-y-0.5 overflow-hidden">
+                          {dayEvents.slice(0, 2).map(e => (
+                            <div key={e.id} className="flex items-center gap-1 px-1 py-0.5 rounded text-[9px] font-medium truncate"
+                              style={{ backgroundColor: TYPE_STYLE[e.type]?.light, color: TYPE_STYLE[e.type]?.bg }}>
+                              <span className="w-1 h-1 rounded-full flex-shrink-0" style={{ backgroundColor: TYPE_STYLE[e.type]?.bg }} />
+                              <span className="truncate">{e.title}</span>
+                            </div>
+                          ))}
+                          {dayEvents.length > 2 && (
+                            <div className="text-[9px] text-gray-400 px-1">+{dayEvents.length - 2} more</div>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              {selectedEvents.length > 0 ? (
-                <div className="space-y-3">
-                  {selectedEvents.map(event => (
-                    <div key={event.id} className="bg-white rounded-xl border border-gray-100 shadow-sm flex items-center gap-4 p-4">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: eventTypeColor[event.type] + '15' }}>
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: eventTypeColor[event.type] }} />
+            )}
+
+            {/* ── WEEK VIEW ── */}
+            {view === 'week' && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                {/* Week header */}
+                <div className="grid grid-cols-8 border-b border-gray-100">
+                  <div className="py-3 text-center text-[11px] text-gray-300 font-medium">Time</div>
+                  {weekDates.map(d => {
+                    const date = new Date(d + 'T00:00:00');
+                    const isToday = d === TODAY;
+                    return (
+                      <div key={d} className="py-3 text-center">
+                        <div className="text-[10px] font-semibold text-gray-400 uppercase">{DAYS_SHORT[date.getDay()]}</div>
+                        <div className={`text-lg font-bold mx-auto w-9 h-9 flex items-center justify-center rounded-full mt-0.5 ${isToday ? 'bg-[#F87404] text-white' : 'text-gray-800'}`}>
+                          {date.getDate()}
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-sm text-gray-900">{event.title}</p>
-                        <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                          <Clock size={11} /> {event.time}
-                          <span className="ml-1 capitalize px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: eventTypeColor[event.type] + '15', color: eventTypeColor[event.type] }}>{event.type}</span>
-                        </p>
-                      </div>
+                    );
+                  })}
+                </div>
+                {/* Time slots */}
+                <div className="overflow-y-auto max-h-[520px]">
+                  {HOURS.map(hour => (
+                    <div key={hour} className="grid grid-cols-8 border-b border-gray-50 min-h-[56px]">
+                      <div className="px-3 pt-2 text-[10px] font-medium text-gray-400 text-right whitespace-nowrap">{fmtHour(hour)}</div>
+                      {weekDates.map(d => {
+                        const slotEvents = eventsFor(d).filter(e => eventHour(e.time) === hour);
+                        return (
+                          <div key={d} className="border-l border-gray-50 p-0.5 relative">
+                            {slotEvents.map(e => (
+                              <div key={e.id} className="rounded-lg px-1.5 py-1 mb-0.5 text-[10px] font-semibold leading-tight"
+                                style={{ backgroundColor: TYPE_STYLE[e.type]?.light, color: TYPE_STYLE[e.type]?.bg, borderLeft: `3px solid ${TYPE_STYLE[e.type]?.bg}` }}>
+                                {e.title}
+                                <div className="font-normal opacity-70">{e.time}</div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div className="bg-white rounded-xl border border-gray-100 p-8 text-center shadow-sm">
-                  <p className="text-sm text-gray-500">No events for this day</p>
-                  <button onClick={() => setShowAddEvent(true)} className="mt-2 text-xs font-semibold text-[#F87404] hover:underline">+ Add an event</button>
-                </div>
-              )}
-            </div>
-
-            {/* Upcoming */}
-            <Card>
-              <h3 className="font-semibold text-gray-900 text-sm mb-3">Upcoming This Week</h3>
-              <div className="space-y-2">
-                {mockCalendarEvents.map(event => (
-                  <div key={event.id} className="flex items-center gap-3 py-1.5">
-                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: eventTypeColor[event.type] }} />
-                    <span className="text-sm text-gray-700 flex-1">{event.title}</span>
-                    <span className="text-xs text-gray-400">{event.time}</span>
-                  </div>
-                ))}
               </div>
-            </Card>
+            )}
+
+            {/* ── AGENDA VIEW ── */}
+            {view === 'agenda' && (
+              <div className="space-y-3">
+                {agendaDates.length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
+                    <CalendarDays size={40} className="mx-auto text-gray-200 mb-3" />
+                    <p className="text-sm text-gray-500">No upcoming events in the next 3 weeks</p>
+                  </div>
+                ) : agendaDates.map(d => {
+                  const isToday = d === TODAY;
+                  const dayEvents = eventsFor(d);
+                  return (
+                    <div key={d} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                      <div className={`px-5 py-3 flex items-center gap-3 ${isToday ? 'bg-[#F87404]/5 border-b border-[#F87404]/15' : 'border-b border-gray-50'}`}>
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-display font-black text-lg ${isToday ? 'bg-[#F87404] text-white' : 'bg-gray-100 text-gray-700'}`}>
+                          {new Date(d + 'T00:00:00').getDate()}
+                        </div>
+                        <div>
+                          <p className={`text-sm font-bold ${isToday ? 'text-[#F87404]' : 'text-gray-900'}`}>
+                            {isToday ? 'Today' : fmtDate(d)}
+                          </p>
+                          <p className="text-[11px] text-gray-400">{dayEvents.length} event{dayEvents.length !== 1 ? 's' : ''}</p>
+                        </div>
+                      </div>
+                      <div className="divide-y divide-gray-50">
+                        {dayEvents.map(event => (
+                          <div key={event.id} className="flex items-center gap-4 px-5 py-3.5">
+                            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: TYPE_STYLE[event.type]?.light }}>
+                              <span style={{ color: TYPE_STYLE[event.type]?.bg }}>{TYPE_STYLE[event.type]?.icon}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 truncate">{event.title}</p>
+                              <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                                <Clock size={11} /> {event.time}
+                                <span className="ml-1.5 capitalize px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ backgroundColor: TYPE_STYLE[event.type]?.light, color: TYPE_STYLE[event.type]?.bg }}>
+                                  {TYPE_STYLE[event.type]?.label}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── Selected date detail (month view only) ── */}
+            {view === 'month' && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                  <div>
+                    <h3 className="font-semibold text-sm text-gray-900">
+                      {selectedDate === TODAY ? 'Today' : fmtDate(selectedDate)}
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-0.5">{selectedEvents.length} event{selectedEvents.length !== 1 ? 's' : ''}</p>
+                  </div>
+                  <button onClick={() => { setNewEvent(e => ({ ...e, date: selectedDate })); setShowAdd(true); }}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-[#F87404] hover:bg-[#F87404]/10 px-3 py-1.5 rounded-lg transition-colors">
+                    <Plus size={13} /> Add
+                  </button>
+                </div>
+                {selectedEvents.length > 0 ? (
+                  <div className="divide-y divide-gray-50">
+                    {selectedEvents.map(event => (
+                      <div key={event.id} className="flex items-center gap-4 px-5 py-3.5">
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: TYPE_STYLE[event.type]?.light }}>
+                          <span style={{ color: TYPE_STYLE[event.type]?.bg }}>{TYPE_STYLE[event.type]?.icon}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900">{event.title}</p>
+                          <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                            <Clock size={11} /> {event.time}
+                          </p>
+                          {event.notes && <p className="text-xs text-gray-500 mt-0.5 truncate">{event.notes}</p>}
+                        </div>
+                        <div className="w-2 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: TYPE_STYLE[event.type]?.bg }} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-10 text-center text-sm text-gray-400">
+                    No events — <button onClick={() => setShowAdd(true)} className="text-[#F87404] font-semibold">add one</button>
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
 
+        {/* ══════════════════════ MEAL PLAN TAB ══════════════════════ */}
         {tab === 'meal-plan' && (
-          <Card>
-            <h2 className="font-semibold text-gray-900 mb-4">Weekly Meal Plan</h2>
-            <div className="space-y-3">
-              {mealPlan.map(day => (
-                <div key={day.day} className="border border-gray-100 rounded-xl p-4">
-                  <h3 className="font-semibold text-sm text-[#F87404] mb-2">{day.day}</h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(day.meals).map(([mealType, food]) => (
-                      <div key={mealType}>
-                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{mealType}</p>
-                        <p className="text-xs text-gray-700 mt-0.5">{food}</p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">Weekly Meal Plan</h2>
+              <Link href="/recipes" className="text-xs font-semibold text-[#F87404] flex items-center gap-1 hover:underline">
+                <BookOpen size={13} /> Browse Recipes
+              </Link>
+            </div>
+            {mockMealPlanWeek.map(day => (
+              <div key={day.day} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-display font-black text-sm ${day.date === TODAY ? 'bg-[#F87404] text-white' : 'bg-gray-100 text-gray-700'}`}>
+                      {new Date(day.date + 'T00:00:00').getDate()}
+                    </div>
+                    <div>
+                      <p className={`text-sm font-bold ${day.date === TODAY ? 'text-[#F87404]' : 'text-gray-900'}`}>
+                        {day.date === TODAY ? 'Today' : day.day}
+                      </p>
+                      <p className="text-[11px] text-gray-400">{totalMealCal(day)} cal total</p>
+                    </div>
+                  </div>
+                  <Flame size={16} className="text-[#F87404]" />
+                </div>
+                <div className="grid grid-cols-3 divide-x divide-gray-50">
+                  {[
+                    { label: 'Breakfast', icon: Apple,   meal: day.breakfast, color: '#F87404' },
+                    { label: 'Lunch',     icon: Utensils, meal: day.lunch,     color: '#004AAD' },
+                    { label: 'Dinner',    icon: Utensils, meal: day.dinner,    color: '#7C3AED' },
+                  ].map(({ label, icon: Icon, meal, color }) => (
+                    <div key={label} className="p-3">
+                      <div className="flex items-center gap-1 mb-1.5">
+                        <Icon size={11} style={{ color }} />
+                        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color }}>{label}</span>
+                      </div>
+                      {meal ? (
+                        <>
+                          <p className="text-xs font-semibold text-gray-800 leading-tight">{meal.name}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">{meal.cal} cal</p>
+                          <Link href={`/recipes/${meal.recipeId}`} className="text-[10px] text-[#F87404] font-medium hover:underline">View recipe →</Link>
+                        </>
+                      ) : (
+                        <button className="text-[10px] text-gray-400 hover:text-[#F87404] transition-colors">+ Add meal</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ══════════════════════ SHOPPING TAB ══════════════════════ */}
+        {tab === 'shopping' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">Shopping List</h2>
+              <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full font-medium">
+                {shoppingDone}/{shopping.length} checked
+              </span>
+            </div>
+
+            {/* Add item */}
+            <div className="flex gap-2">
+              <input value={addedItem} onChange={e => setAddedItem(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addShoppingItem()}
+                placeholder="Add item manually..."
+                className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-[#F87404] bg-white" />
+              <button onClick={addShoppingItem} className="px-4 py-2.5 bg-[#F87404] text-white rounded-xl text-sm font-semibold hover:bg-[#e06000] transition-colors flex-shrink-0">
+                Add
+              </button>
+            </div>
+
+            {shoppingByCategory.map(({ cat, items }) => items.length === 0 ? null : (
+              <div key={cat} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-50 flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-gray-500">{cat}</h3>
+                  <span className="text-[10px] text-gray-400">{items.filter(i => i.checked).length}/{items.length}</span>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {items.map(item => (
+                    <label key={item.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer transition-colors">
+                      <div onClick={() => setShopping(prev => prev.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i))}
+                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all flex-shrink-0 cursor-pointer ${item.checked ? 'bg-[#10B981] border-[#10B981]' : 'border-gray-300'}`}>
+                        {item.checked && <Check size={11} className="text-white" />}
+                      </div>
+                      <span className={`flex-1 text-sm ${item.checked ? 'line-through text-gray-400' : 'text-gray-800'}`}>{item.name}</span>
+                      {item.amount && <span className="text-xs text-gray-400">{item.amount}</span>}
+                      <button onClick={() => setShopping(prev => prev.filter(i => i.id !== item.id))}
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors">
+                        <Trash2 size={12} />
+                      </button>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ══════════════════════ TODOS TAB ══════════════════════ */}
+        {tab === 'todos' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">To-Do List</h2>
+              <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1 rounded-full font-medium">
+                {doneCount}/{todos.length} complete
+              </span>
+            </div>
+
+            {/* Add todo */}
+            <div className="flex gap-2">
+              <input value={newTodo} onChange={e => setNewTodo(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addTodo()}
+                placeholder="Add a task..."
+                className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-[#F87404] bg-white" />
+              <button onClick={addTodo} className="px-4 py-2.5 bg-[#004AAD] text-white rounded-xl text-sm font-semibold hover:bg-[#003899] transition-colors flex-shrink-0">
+                Add
+              </button>
+            </div>
+
+            {/* Priority groups */}
+            {(['high', 'medium', 'low'] as const).map(priority => {
+              const group = todos.filter(t => t.priority === priority);
+              if (group.length === 0) return null;
+              const colors = { high: 'text-red-600 bg-red-50', medium: 'text-[#F87404] bg-orange-50', low: 'text-gray-500 bg-gray-100' };
+              return (
+                <div key={priority} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-3 border-b border-gray-50">
+                    <span className={`text-xs font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${colors[priority]}`}>
+                      {priority} priority
+                    </span>
+                  </div>
+                  <div className="divide-y divide-gray-50">
+                    {group.map(todo => (
+                      <div key={todo.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors">
+                        <button onClick={() => setTodos(prev => prev.map(t => t.id === todo.id ? { ...t, done: !t.done } : t))}
+                          className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${todo.done ? 'bg-[#F87404] border-[#F87404]' : 'border-gray-300'}`}>
+                          {todo.done && <Check size={11} className="text-white" />}
+                        </button>
+                        <span className={`flex-1 text-sm ${todo.done ? 'line-through text-gray-400' : 'text-gray-800'}`}>{todo.text}</span>
+                        <button onClick={() => setTodos(prev => prev.filter(t => t.id !== todo.id))}
+                          className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors">
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     ))}
                   </div>
                 </div>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {tab === 'shopping' && (
-          <Card>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-900">Shopping List</h2>
-              <span className="text-xs text-gray-400">{shopping.filter(i => i.checked).length}/{shopping.length} done</span>
-            </div>
-            <div className="space-y-1">
-              {shopping.map(item => (
-                <label key={item.id} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors">
-                  <input type="checkbox" checked={item.checked}
-                    onChange={() => setShopping(prev => prev.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i))}
-                    className="w-4 h-4 rounded accent-[#F87404]" />
-                  <span className={`text-sm flex-1 ${item.checked ? 'line-through text-gray-400' : 'text-gray-700'}`}>{item.item}</span>
-                  <span className="text-[10px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{item.category}</span>
-                </label>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {tab === 'todos' && (
-          <Card>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-900">To-Do List</h2>
-              <span className="text-xs text-gray-400">{todoList.filter(t => t.done).length}/{todoList.length} complete</span>
-            </div>
-            <div className="space-y-1">
-              {todoList.map(todo => (
-                <label key={todo.id} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors">
-                  <input type="checkbox" checked={todo.done}
-                    onChange={() => setTodoList(prev => prev.map(t => t.id === todo.id ? { ...t, done: !t.done } : t))}
-                    className="w-4 h-4 rounded accent-[#F87404]" />
-                  <span className={`text-sm flex-1 ${todo.done ? 'line-through text-gray-400' : 'text-gray-700'}`}>{todo.text}</span>
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${todo.priority === 'high' ? 'bg-red-100 text-red-600' : todo.priority === 'medium' ? 'bg-orange-100 text-[#F87404]' : 'bg-gray-100 text-gray-500'}`}>
-                    {todo.priority}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </Card>
+              );
+            })}
+          </div>
         )}
 
       </div>
 
-      {showAddEvent && (
+      {/* ══ Add Event Modal ══ */}
+      {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAddEvent(false)} />
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAdd(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 z-10">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="font-semibold text-gray-900">Add Event</h2>
-              <button onClick={() => setShowAddEvent(false)} className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors"><X size={16} /></button>
+              <h2 className="font-semibold text-gray-900 text-lg">Add Event</h2>
+              <button onClick={() => setShowAdd(false)} className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
+                <X size={16} />
+              </button>
             </div>
             <div className="space-y-3">
-              <input placeholder="Event title" className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-[#F87404]" />
-              <input type="date" defaultValue={selectedDate} className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-[#F87404]" />
-              <input type="time" className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-[#F87404]" />
-              <select className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-[#F87404]">
-                <option>Workout</option><option>Meal</option><option>Appointment</option><option>Other</option>
-              </select>
-              <button onClick={() => setShowAddEvent(false)} className="w-full bg-[#F87404] hover:bg-[#e06000] text-white font-semibold py-3 rounded-xl text-sm transition-all">Save Event</button>
+              <input value={newEvent.title} onChange={e => setNewEvent(v => ({ ...v, title: e.target.value }))}
+                placeholder="Event title *" className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-[#F87404]" />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 block mb-1">Date</label>
+                  <input type="date" value={newEvent.date} onChange={e => setNewEvent(v => ({ ...v, date: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-[#F87404]" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 block mb-1">Time</label>
+                  <input type="time" value={newEvent.time} onChange={e => setNewEvent(v => ({ ...v, time: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 outline-none focus:border-[#F87404]" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(TYPE_STYLE).map(([key, style]) => (
+                    <button key={key} onClick={() => setNewEvent(v => ({ ...v, type: key }))}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${newEvent.type === key ? 'border-[#F87404]/40' : 'border-gray-200 hover:border-gray-300'}`}
+                      style={newEvent.type === key ? { backgroundColor: style.light, color: style.bg } : {}}>
+                      {style.icon} {style.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <textarea value={newEvent.notes} onChange={e => setNewEvent(v => ({ ...v, notes: e.target.value }))}
+                placeholder="Notes (optional)" rows={2}
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-[#F87404] resize-none" />
+              <button onClick={addEvent}
+                className="w-full bg-[#F87404] hover:bg-[#e06000] text-white font-semibold py-3 rounded-xl text-sm transition-all">
+                Save Event
+              </button>
             </div>
           </div>
         </div>

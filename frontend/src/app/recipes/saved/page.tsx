@@ -1,12 +1,12 @@
 'use client';
 
 import { DashboardShell } from '@/components/layout/DashboardShell';
-import { mockRecipes } from '@/lib/mockData';
+import { allMockRecipes } from '@/lib/mockData';
 import { ChevronLeft, Bookmark, Clock, Flame } from 'lucide-react';
 import Link from 'next/link';
 
 export default function SavedRecipesPage() {
-  const saved = mockRecipes.filter(r => r.isSaved);
+  const saved = allMockRecipes.filter(r => r.isSaved);
 
   return (
     <DashboardShell>

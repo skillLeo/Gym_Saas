@@ -81,7 +81,7 @@ export default function AppSidebarLayout({ children, fullWidth = false }: Props)
 
   /* ─── Shared sidebar content ─── */
   const SidebarContent = () => (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col w-full" style={{ height: '100vh' }}>
       {/* Logo */}
       <div className="px-4 h-16 flex items-center justify-between border-b border-gray-100 shrink-0">
         <Link href="/dashboard" className="flex items-center gap-3 group" onClick={() => setMobileMenuOpen(false)}>
@@ -110,7 +110,7 @@ export default function AppSidebarLayout({ children, fullWidth = false }: Props)
       )}
 
       {/* Main nav */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
+      <nav className="px-3 py-4 space-y-0.5 overflow-y-auto" style={{ flex: '1 1 0', minHeight: 0 }}>
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-2">Main Menu</p>
         {NAV_MAIN.map(({ href, icon: Icon, label }) => {
           const active = isActive(href);
@@ -540,9 +540,9 @@ export default function AppSidebarLayout({ children, fullWidth = false }: Props)
 
   /* ─── SIDEBAR MODE ─── */
   return (
-    <div className="h-dvh bg-[#F8F9FA] flex overflow-hidden">
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-gray-100 shrink-0 h-full z-30 shadow-sm">
+    <div className="h-dvh bg-[#F8F9FA] overflow-hidden">
+      {/* Desktop sidebar — fixed, nav area scrolls internally */}
+      <aside className="hidden lg:flex flex-col fixed top-0 left-0 w-64 h-screen bg-white border-r border-gray-100 z-30 shadow-sm">
         <SidebarContent />
       </aside>
 
@@ -550,14 +550,14 @@ export default function AppSidebarLayout({ children, fullWidth = false }: Props)
       {mobileMenuOpen && (
         <>
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 lg:hidden" onClick={() => setMobileMenuOpen(false)} />
-          <div className="fixed left-0 top-0 bottom-0 w-72 bg-white z-50 lg:hidden shadow-2xl">
+          <div className="fixed left-0 top-0 bottom-0 w-72 bg-white z-50 lg:hidden shadow-2xl flex flex-col">
             <SidebarContent />
           </div>
         </>
       )}
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Main content — offset by sidebar width on desktop */}
+      <div className="h-dvh flex flex-col min-h-0 overflow-hidden lg:ml-64">
         <TopHeader />
 
         <main className={`flex-1 min-h-0 overflow-y-auto pb-24 lg:pb-6 ${fullWidth ? 'flex flex-col' : 'px-4 md:px-6 py-5'}`}>

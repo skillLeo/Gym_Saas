@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { Avatar } from '@/components/ui/Avatar';
@@ -17,16 +17,36 @@ export default function MessagesPage() {
   const [messages, setMessages] = useState(mockConversations[0].messages);
   const [search, setSearch] = useState('');
 
+  const [typing, setTyping] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, typing]);
+
   const handleSend = () => {
     if (!text.trim()) return;
+    const sent = text.trim();
     setMessages(prev => [...prev, {
-      id: `m-${prev.length + 100}`,
+      id: `m-${Date.now()}`,
       senderId: '1',
-      text,
-      time: 'Just now',
+      text: sent,
+      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       isOwn: true,
     }]);
     setText('');
+
+    setTyping(true);
+    setTimeout(() => {
+      setTyping(false);
+      setMessages(prev => [...prev, {
+        id: `m-${Date.now() + 1}`,
+        senderId: selected.participant.id,
+        text: "That's awesome! Keep pushing! 💪",
+        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        isOwn: false,
+      }]);
+    }, 1800);
   };
 
   const q = search.toLowerCase().trim();
@@ -189,6 +209,17 @@ export default function MessagesPage() {
                   </div>
                 </div>
               ))}
+              {typing && (
+                <div className="flex items-end gap-2.5">
+                  <Avatar src={selected.participant.avatar} name={selected.participant.name} size={30} />
+                  <div className="bg-white border border-gray-100 px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1 items-center shadow-sm">
+                    {[0,1,2].map(i => (
+                      <div key={i} className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div ref={bottomRef} />
             </div>
 
             <div className="px-5 py-3.5 border-t border-gray-100 shrink-0">
