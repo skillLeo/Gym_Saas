@@ -7,6 +7,7 @@ import { useLayoutStore } from '@/store/layoutStore';
 import { isAuthenticated } from '@/lib/auth';
 import { Avatar } from '@/components/ui/Avatar';
 import api from '@/lib/api';
+import { mockConversations } from '@/lib/mockData';
 import {
   LayoutDashboard, Utensils, Dumbbell, Users, MessageCircle,
   BookOpen, CalendarDays, User, Settings, LogOut, Bot, CreditCard,
@@ -55,6 +56,7 @@ export default function AppSidebarLayout({ children, fullWidth = false }: Props)
   const router    = useRouter();
   const { user, logout } = useAuthStore();
   const { mode, setMode } = useLayoutStore();
+  const totalUnread = mockConversations.reduce((s, c) => s + c.unread, 0);
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -112,6 +114,7 @@ export default function AppSidebarLayout({ children, fullWidth = false }: Props)
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-2">Main Menu</p>
         {NAV_MAIN.map(({ href, icon: Icon, label }) => {
           const active = isActive(href);
+          const isMessages = href === '/messages';
           return (
             <Link key={href} href={href} onClick={() => setMobileMenuOpen(false)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group ${
@@ -120,7 +123,12 @@ export default function AppSidebarLayout({ children, fullWidth = false }: Props)
                   : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
               }`}>
               <Icon size={17} className={active ? 'text-white' : 'text-gray-400 group-hover:text-gray-600'} />
-              <span>{label}</span>
+              <span className="flex-1">{label}</span>
+              {isMessages && totalUnread > 0 && (
+                <span className={`min-w-[18px] h-[18px] rounded-full text-[10px] font-bold flex items-center justify-center px-1 ${active ? 'bg-white text-[#F87404]' : 'bg-[#F87404] text-white'}`}>
+                  {totalUnread}
+                </span>
+              )}
             </Link>
           );
         })}
@@ -238,7 +246,11 @@ export default function AppSidebarLayout({ children, fullWidth = false }: Props)
           <Link href="/messages"
             className="relative w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors">
             <MessageCircle size={18} />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-500 rounded-full ring-2 ring-white" />
+            {totalUnread > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-[#F87404] text-white text-[9px] font-bold flex items-center justify-center px-0.5 ring-2 ring-white">
+                {totalUnread}
+              </span>
+            )}
           </Link>
 
           <div className="w-px h-6 bg-gray-200 mx-1" />
@@ -420,7 +432,11 @@ export default function AppSidebarLayout({ children, fullWidth = false }: Props)
               </Link>
               <Link href="/messages" className="relative w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
                 <MessageCircle size={18} />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-500 rounded-full" />
+                {totalUnread > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-[#F87404] text-white text-[9px] font-bold flex items-center justify-center px-0.5">
+                    {totalUnread}
+                  </span>
+                )}
               </Link>
               <div className="w-px h-6 bg-gray-200 mx-0.5" />
 

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
-import { mockMembers, mockPosts, mockComments } from '@/lib/mockData';
+import { mockMembers, mockPosts, mockComments, mockConversations } from '@/lib/mockData';
 import { useSocialStore } from '@/store/socialStore';
 import {
   ChevronLeft, MessageCircle, Heart, MoreHorizontal, Grid3X3,
@@ -32,6 +32,8 @@ export default function UserProfilePage() {
   const { toggleFollow, isFollowing } = useSocialStore();
 
   const member = mockMembers.find(m => m.username === username) || mockMembers[0];
+  const existingConv = mockConversations.find(c => c.participant.id === member.id);
+  const messageHref = existingConv ? `/messages/${existingConv.id}` : '/messages';
   const [isFriend, setIsFriend] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('stream');
@@ -141,11 +143,9 @@ export default function UserProfilePage() {
                 <span className="hidden sm:inline">Like</span>
               </button>
 
-              <Link href="/messages">
-                <button className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:border-[#004AAD]/40 transition-all">
-                  <MessageCircle size={15} />
-                  <span className="hidden sm:inline">Message</span>
-                </button>
+              <Link href={messageHref} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:border-[#004AAD]/40 transition-all">
+                <MessageCircle size={15} />
+                <span className="hidden sm:inline">Message</span>
               </Link>
 
               <button
