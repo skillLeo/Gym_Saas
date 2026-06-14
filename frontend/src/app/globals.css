@@ -32,6 +32,18 @@
   --border: #E5E7EB;
 }
 
+.dark {
+  --background: #111827;
+  --foreground: #F9FAFB;
+  --bg-primary: #111827;
+  --bg-secondary: #1F2937;
+  --bg-card: #1F2937;
+  --text-primary: #F9FAFB;
+  --text-secondary: #D1D5DB;
+  --text-muted: #9CA3AF;
+  --border: #374151;
+}
+
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
