@@ -29,15 +29,6 @@ export default function MessagesPage() {
     setText('');
   };
 
-  const selectConv = (conv: typeof mockConversations[0], isMobile: boolean) => {
-    if (isMobile) {
-      router.push(`/messages/${conv.id}`);
-    } else {
-      setSelected(conv);
-      setMessages(conv.messages);
-    }
-  };
-
   const q = search.toLowerCase().trim();
   const filteredConvs = q
     ? mockConversations.filter(c =>
@@ -53,9 +44,9 @@ export default function MessagesPage() {
       )
     : otherMembers;
 
-  const ConvList = ({ mobile }: { mobile: boolean }) => (
+  /* ── shared list panel JSX (inlined to avoid focus-loss on re-render) ── */
+  const listPanel = (mobile: boolean) => (
     <div className={mobile ? 'flex flex-col h-full' : 'w-80 flex-shrink-0 border-r border-gray-100 flex flex-col'}>
-
       {/* Header */}
       <div className="px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
         <div className="flex items-center justify-between mb-3">
@@ -83,19 +74,17 @@ export default function MessagesPage() {
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">
-
         {/* Conversations */}
         {filteredConvs.length > 0 && (
           <div>
-            {q && (
-              <p className="px-4 pt-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                Conversations
-              </p>
-            )}
+            {q && <p className="px-4 pt-3 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Conversations</p>}
             {filteredConvs.map(conv => (
               <button
                 key={conv.id}
-                onClick={() => selectConv(conv, mobile)}
+                onClick={() => {
+                  if (mobile) { router.push(`/messages/${conv.id}`); }
+                  else { setSelected(conv); setMessages(conv.messages); }
+                }}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left border-b border-gray-50
                   ${!mobile && selected.id === conv.id ? 'bg-[#F87404]/5 border-l-2 border-l-[#F87404]' : ''}`}
               >
@@ -119,7 +108,7 @@ export default function MessagesPage() {
           </div>
         )}
 
-        {/* Other members — always visible below conversations */}
+        {/* Other members */}
         {filteredOther.length > 0 && (
           <div>
             <p className="px-4 pt-4 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
@@ -164,12 +153,12 @@ export default function MessagesPage() {
 
         {/* Mobile */}
         <div className="md:hidden bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style={{ height: 'calc(100vh - 140px)' }}>
-          <ConvList mobile />
+          {listPanel(true)}
         </div>
 
         {/* Desktop split view */}
         <div className="hidden md:flex bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style={{ height: 'calc(100vh - 140px)' }}>
-          <ConvList mobile={false} />
+          {listPanel(false)}
 
           {/* Chat */}
           <div className="flex-1 flex flex-col min-w-0">
