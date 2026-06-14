@@ -77,7 +77,7 @@ export const mockComments = [
 ];
 
 export const mockFoodLog = {
-  date: new Date().toISOString().split('T')[0],
+  date: '2026-06-14',
   dailyGoal: { calories: 2000, protein: 150, carbs: 200, fat: 65 },
   consumed: { calories: 1340, protein: 98, carbs: 142, fat: 41 },
   waterGlasses: 5,
