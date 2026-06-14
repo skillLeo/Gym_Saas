@@ -46,8 +46,8 @@ export default function ConversationPage() {
   const quickReplies = ["👍", "🔥 Let's go!", "Nice work!", "When's the next session?", "Proud of you!"];
 
   return (
-    <DashboardShell>
-      <div className="flex flex-col h-[calc(100vh-4rem)] max-w-lg mx-auto">
+    <DashboardShell fullWidth>
+      <div className="flex-1 min-h-0 flex flex-col max-w-lg mx-auto w-full">
 
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-white/[0.07] shrink-0">
