@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* Blocking script: apply dark class before first paint to prevent flash */}
-        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('met-theme');if(!t||t==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();` }} />
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('met-theme');if(t==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();` }} />
       </head>
       <body className={`${dmSans.variable} ${playfair.variable} font-sans min-h-screen antialiased bg-[#F8F9FA] text-gray-900`} suppressHydrationWarning>
         <Providers>

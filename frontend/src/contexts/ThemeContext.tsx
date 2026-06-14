@@ -11,17 +11,17 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: 'dark',
+  theme: 'light',
   toggleTheme: () => {},
   setTheme: () => {},
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('dark');
+  const [theme, setThemeState] = useState<Theme>('light');
 
   useEffect(() => {
     const stored = localStorage.getItem('met-theme') as Theme | null;
-    const resolved = stored ?? 'dark';
+    const resolved = stored ?? 'light';
     setThemeState(resolved);
     document.documentElement.classList.toggle('dark', resolved === 'dark');
   }, []);
