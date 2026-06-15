@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Sans, Playfair_Display } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 import Providers from "@/components/Providers";
@@ -22,10 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Blocking script: apply dark class before first paint to prevent flash */}
-        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('met-theme');if(t==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();` }} />
       </head>
-      <body className={`${dmSans.variable} ${playfair.variable} font-sans min-h-screen antialiased bg-[#F8F9FA] text-gray-900`} suppressHydrationWarning>
+      <body className={`${dmSans.variable} ${playfair.variable} font-sans min-h-screen antialiased bg-[#F8F9FA] dark:bg-[#111827] text-gray-900 dark:text-gray-100`} suppressHydrationWarning>
+        <Script id="dark-mode-init" strategy="beforeInteractive">{`(function(){try{var t=localStorage.getItem('met-theme');if(t==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();`}</Script>
         <Providers>
           {children}
         </Providers>
