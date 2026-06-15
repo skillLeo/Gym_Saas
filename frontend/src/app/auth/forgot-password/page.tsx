@@ -2,7 +2,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 
@@ -14,15 +13,10 @@ export default function ForgotPasswordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    try {
-      await api.post('/auth/forgot-password', { email });
-      setSent(true);
-      toast.success('Password reset link sent!');
-    } catch {
-      toast.error('Failed to send reset link.');
-    } finally {
-      setLoading(false);
-    }
+    await new Promise(r => setTimeout(r, 900));
+    setLoading(false);
+    setSent(true);
+    toast.success('Password reset link sent!');
   };
 
   if (sent) return (

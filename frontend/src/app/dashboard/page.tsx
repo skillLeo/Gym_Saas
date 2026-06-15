@@ -1,45 +1,41 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressRing } from '@/components/ui/ProgressRing';
 import { MacroBar } from '@/components/ui/MacroBar';
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { mockFoodLog, mockWorkouts } from '@/lib/mockData';
 import { Utensils, Plus, Dumbbell, Droplets, Scale, ChevronRight, Shield, Users, Key, BarChart2 } from 'lucide-react';
 import { format } from 'date-fns';
 
+const MOCK_NUTRITION = {
+  calories_consumed: mockFoodLog.consumed.calories,
+  calorie_goal: mockFoodLog.dailyGoal.calories,
+  protein_g: mockFoodLog.consumed.protein,
+  goal_protein: mockFoodLog.dailyGoal.protein,
+  carbs_g: mockFoodLog.consumed.carbs,
+  goal_carbs: mockFoodLog.dailyGoal.carbs,
+  fat_g: mockFoodLog.consumed.fat,
+  goal_fat: mockFoodLog.dailyGoal.fat,
+};
+
+const MOCK_FOOD_ENTRIES = [
+  ...mockFoodLog.meals.breakfast.map((f: any) => ({ ...f, meal_type: 'breakfast' })),
+  ...mockFoodLog.meals.lunch.map((f: any) => ({ ...f, meal_type: 'lunch' })),
+].slice(0, 5);
+
 export default function DashboardPage() {
   const { user } = useAuthStore();
+  const [waterGlasses, setWaterGlasses] = useState(mockFoodLog.waterGlasses);
+  const waterGoal = mockFoodLog.waterGoal;
 
-  const { data: dashData, isLoading } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: () => api.get('/dashboard').then(r => r.data.data),
-    refetchInterval: 60000,
-  });
-
-  const qc = useQueryClient();
-  const waterMutation = useMutation({
-    mutationFn: (action: 'increment' | 'decrement') => api.post(`/water-log/${action}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['dashboard'] }),
-  });
-
-  if (isLoading) return (
-    <div className="flex items-center justify-center min-h-64">
-      <LoadingSpinner size="lg" />
-    </div>
-  );
-
-  const d = dashData;
-  const n = d?.nutrition ?? {};
-  const w = d?.water ?? {};
+  const n = MOCK_NUTRITION;
   const calPct = n.calorie_goal ? Math.min(100, Math.round((n.calories_consumed / n.calorie_goal) * 100)) : 0;
-  const remaining = Math.max(0, (n.calorie_goal ?? 2000) - (n.calories_consumed ?? 0));
+  const remaining = Math.max(0, n.calorie_goal - n.calories_consumed);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -49,8 +45,8 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{greeting}, {user?.name?.split(' ')[0]} 👋</h1>
-          <p className="text-sm text-gray-500 mt-1">{format(new Date(), 'EEEE, MMMM d, yyyy')}</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{greeting}, {user?.name?.split(' ')[0]} 👋</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{format(new Date(), 'EEEE, MMMM d, yyyy')}</p>
         </div>
         {user?.is_on_trial && (
           <Badge variant="trial" className="text-sm px-3 py-1.5">
@@ -59,7 +55,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Admin quick-access banner — only for admins */}
+      {/* Admin quick-access banner */}
       {user?.is_admin && (
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-5 text-white">
           <div className="flex items-center gap-3 mb-4">
@@ -95,26 +91,26 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle>Today's Nutrition</CardTitle>
-              <Link href="/food-log" className="text-xs text-[#F87404] hover:underline flex items-center gap-1">View Log <ChevronRight size={12} /></Link>
+              <Link href="/food-journal" className="text-xs text-[#F87404] hover:underline flex items-center gap-1">View Log <ChevronRight size={12} /></Link>
             </CardHeader>
             <div className="flex flex-col sm:flex-row items-center gap-6">
               <div className="w-44 h-44 flex-shrink-0">
                 <ProgressRing
-                  value={n.calories_consumed ?? 0}
-                  maxValue={n.calorie_goal ?? 2000}
-                  text={Math.round(n.calories_consumed ?? 0).toString()}
+                  value={n.calories_consumed}
+                  maxValue={n.calorie_goal}
+                  text={Math.round(n.calories_consumed).toString()}
                   subText="kcal eaten"
-                  pathColor={calPct > 100 ? '#E63946' : '#F87404'}
+                  pathColor={calPct > 100 ? '#FF0404' : '#F87404'}
                 />
               </div>
               <div className="flex-1 w-full space-y-4">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Goal: <strong className="text-gray-900">{n.calorie_goal ?? 2000} kcal</strong></span>
-                  <span className="text-gray-500">Remaining: <strong className="text-[#3FB950]">{Math.round(remaining)} kcal</strong></span>
+                  <span className="text-gray-500 dark:text-gray-400">Goal: <strong className="text-gray-900 dark:text-white">{n.calorie_goal} kcal</strong></span>
+                  <span className="text-gray-500 dark:text-gray-400">Remaining: <strong className="text-[#3FB950]">{Math.round(remaining)} kcal</strong></span>
                 </div>
-                <MacroBar label="Protein" current={n.protein_g ?? 0} goal={n.goal_protein ?? 150} color="#F87404" />
-                <MacroBar label="Carbs" current={n.carbs_g ?? 0} goal={n.goal_carbs ?? 200} color="#F97316" />
-                <MacroBar label="Fat" current={n.fat_g ?? 0} goal={n.goal_fat ?? 65} color="#FACC15" />
+                <MacroBar label="Protein" current={n.protein_g} goal={n.goal_protein} color="#F87404" />
+                <MacroBar label="Carbs" current={n.carbs_g} goal={n.goal_carbs} color="#F97316" />
+                <MacroBar label="Fat" current={n.fat_g} goal={n.goal_fat} color="#FFC000" />
               </div>
             </div>
           </Card>
@@ -123,24 +119,24 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle>Food Log</CardTitle>
-              <Link href="/food-log">
+              <Link href="/food-journal">
                 <Button variant="secondary" size="sm"><Plus size={14} /> Add Food</Button>
               </Link>
             </CardHeader>
-            {d?.recent_food_entries?.length > 0 ? (
+            {MOCK_FOOD_ENTRIES.length > 0 ? (
               <div className="space-y-2">
-                {d.recent_food_entries.map((entry: any) => (
-                  <div key={entry.id} className="flex justify-between items-center py-2 border-b border-gray-200/50 last:border-0">
+                {MOCK_FOOD_ENTRIES.map((entry: any) => (
+                  <div key={entry.id} className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/5 last:border-0">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-[#F87404]/10 flex items-center justify-center">
                         <Utensils size={14} className="text-[#F87404]" />
                       </div>
                       <div>
-                        <p className="text-sm text-gray-900 font-medium">{entry.name}</p>
+                        <p className="text-sm text-gray-900 dark:text-white font-medium">{entry.name}</p>
                         <p className="text-xs text-gray-400 capitalize">{entry.meal_type}</p>
                       </div>
                     </div>
-                    <span className="text-sm font-semibold text-gray-900">{Math.round(entry.calories)} kcal</span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">{Math.round(entry.calories)} kcal</span>
                   </div>
                 ))}
               </div>
@@ -148,7 +144,7 @@ export default function DashboardPage() {
               <div className="text-center py-8">
                 <Utensils size={32} className="text-gray-400 mx-auto mb-3" />
                 <p className="text-sm text-gray-500">No food logged today</p>
-                <Link href="/food-log"><Button size="sm" className="mt-3">Log your first meal</Button></Link>
+                <Link href="/food-journal"><Button size="sm" className="mt-3">Log your first meal</Button></Link>
               </div>
             )}
           </Card>
@@ -159,15 +155,19 @@ export default function DashboardPage() {
               <CardTitle>Today's Fitness</CardTitle>
               <Link href="/fitness"><Button variant="secondary" size="sm"><Plus size={14} /> Log Workout</Button></Link>
             </CardHeader>
-            {d?.fitness_today?.workouts_logged > 0 ? (
+            {mockWorkouts.length > 0 ? (
               <div className="flex items-center gap-4">
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-gray-900">{d.fitness_today.workouts_logged}</p>
-                  <p className="text-xs text-gray-500">Workouts</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">1</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Workouts</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-[#E63946]">{d.fitness_today.calories_burned}</p>
-                  <p className="text-xs text-gray-500">Kcal burned</p>
+                  <p className="text-2xl font-bold text-[#FF0404]">{mockWorkouts[0]?.calories ?? 380}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Kcal burned</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-[#F87404]">{mockWorkouts[0]?.duration ?? 45}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Minutes</p>
                 </div>
               </div>
             ) : (
@@ -194,54 +194,58 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
 
-            {/* Big count */}
             <div className="flex items-end justify-between mb-4">
               <div>
-                <p className="text-4xl font-black text-gray-900 leading-none">
-                  {w.glasses_today ?? 0}
-                  <span className="text-lg font-semibold text-gray-400 ml-1">/ {w.goal ?? 8}</span>
+                <p className="text-4xl font-black text-gray-900 dark:text-white leading-none">
+                  {waterGlasses}
+                  <span className="text-lg font-semibold text-gray-400 ml-1">/ {waterGoal}</span>
                 </p>
-                <p className="text-xs text-gray-500 mt-1">glasses today</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">glasses today</p>
               </div>
-              {(w.glasses_today ?? 0) >= (w.goal ?? 8) && (
+              {waterGlasses >= waterGoal && (
                 <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
                   ✓ Goal reached!
                 </span>
               )}
             </div>
 
-            {/* Glass icons */}
             <div className="flex gap-1.5 flex-wrap mb-4">
-              {Array.from({ length: w.goal ?? 8 }).map((_, i) => (
+              {Array.from({ length: waterGoal }).map((_, i) => (
                 <div key={i}
                   className={`flex-1 min-w-[28px] h-9 rounded-xl flex items-center justify-center transition-all ${
-                    i < (w.glasses_today ?? 0)
+                    i < waterGlasses
                       ? 'bg-[#F87404] shadow-sm shadow-[#F87404]/20'
-                      : 'bg-gray-100 border border-gray-200'
+                      : 'bg-gray-100 dark:bg-white/10 border border-gray-200 dark:border-white/10'
                   }`}>
-                  <Droplets size={14} className={i < (w.glasses_today ?? 0) ? 'text-white' : 'text-gray-300'} />
+                  <Droplets size={14} className={i < waterGlasses ? 'text-white' : 'text-gray-300 dark:text-gray-600'} />
                 </div>
               ))}
             </div>
 
-            {/* Progress bar */}
-            <div className="h-1.5 bg-gray-100 rounded-full mb-4 overflow-hidden">
+            <div className="h-1.5 bg-gray-100 dark:bg-white/10 rounded-full mb-4 overflow-hidden">
               <div
                 className="h-full bg-[#F87404] rounded-full transition-all"
-                style={{ width: `${Math.min(100, ((w.glasses_today ?? 0) / (w.goal ?? 8)) * 100)}%` }}
+                style={{ width: `${Math.min(100, (waterGlasses / waterGoal) * 100)}%` }}
               />
             </div>
 
             <div className="flex gap-2">
               <button
-                onClick={() => waterMutation.mutate('decrement')}
-                disabled={waterMutation.isPending || (w.glasses_today ?? 0) <= 0}
-                className="flex-1 h-9 rounded-xl border border-gray-200 bg-white text-gray-600 font-bold text-lg hover:bg-gray-50 disabled:opacity-40 transition-all"
+                onClick={() => {
+                  if (waterGlasses > 0) {
+                    setWaterGlasses(v => v - 1);
+                    toast.success('Water removed');
+                  }
+                }}
+                disabled={waterGlasses <= 0}
+                className="flex-1 h-9 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 text-gray-600 dark:text-gray-300 font-bold text-lg hover:bg-gray-50 dark:hover:bg-white/10 disabled:opacity-40 transition-all"
               >−</button>
               <button
-                onClick={() => waterMutation.mutate('increment')}
-                disabled={waterMutation.isPending}
-                className="flex-[2] h-9 rounded-xl bg-[#F87404] hover:bg-[#e06000] text-white font-semibold text-sm flex items-center justify-center gap-1.5 disabled:opacity-60 transition-all shadow-sm shadow-[#F87404]/25"
+                onClick={() => {
+                  setWaterGlasses(v => v + 1);
+                  toast.success('Glass of water logged! 💧');
+                }}
+                className="flex-[2] h-9 rounded-xl bg-[#F87404] hover:bg-[#e06000] text-white font-semibold text-sm flex items-center justify-center gap-1.5 transition-all shadow-sm shadow-[#F87404]/25"
               >
                 <Droplets size={14} /> + Glass
               </button>
@@ -259,7 +263,7 @@ export default function DashboardPage() {
                 <div className="w-24 h-24 mx-auto mb-3">
                   <ProgressRing value={30 - (user.trial_days_remaining ?? 0)} maxValue={30} text={`${user.trial_days_remaining}d`} subText="left" pathColor="#F97316" />
                 </div>
-                <p className="text-xs text-gray-500 mb-3">Upgrade to keep all your data & access</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Upgrade to keep all your data & access</p>
                 <Link href="/membership"><Button size="sm" variant="warning" className="w-full">Upgrade — from $7.99/mo</Button></Link>
               </div>
             </Card>
@@ -270,15 +274,15 @@ export default function DashboardPage() {
             <CardHeader><CardTitle>Quick Stats</CardTitle></CardHeader>
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-500 flex items-center gap-2"><Scale size={14} /> Current Weight</span>
-                <span className="text-sm font-semibold text-gray-900">{user?.current_weight_kg ? `${user.current_weight_kg} kg` : '—'}</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2"><Scale size={14} /> Current Weight</span>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">{user?.current_weight_kg ? `${user.current_weight_kg} kg` : '—'}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-500">Goal Weight</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Goal Weight</span>
                 <span className="text-sm font-semibold text-[#3FB950]">{user?.goal_weight_kg ? `${user.goal_weight_kg} kg` : '—'}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-500">Daily Goal</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Daily Goal</span>
                 <span className="text-sm font-semibold text-[#F87404]">{user?.daily_calorie_goal ?? 2000} kcal</span>
               </div>
             </div>

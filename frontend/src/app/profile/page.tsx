@@ -1,10 +1,9 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import * as Tabs from '@radix-ui/react-tabs';
 import { format, parseISO } from 'date-fns';
-import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -27,7 +26,6 @@ const GOAL_OPTS = [
 
 export default function ProfilePage() {
   const { user, setUser } = useAuthStore();
-  const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [profileForm, setProfileForm] = useState({ name: '', bio: '', date_of_birth: '', gender: '' });
@@ -42,26 +40,47 @@ export default function ProfilePage() {
   }, [user]);
 
   const updateProfile = useMutation({
-    mutationFn: (data: any) => api.put('/auth/user', data),
-    onSuccess: (res) => { setUser(res.data.data); toast.success('Profile updated!'); },
-    onError: (err: any) => { setErrors(err.response?.data?.errors ?? {}); toast.error('Update failed.'); },
+    mutationFn: async (data: any) => {
+      await new Promise(r => setTimeout(r, 400));
+      return data;
+    },
+    onSuccess: (data) => {
+      if (user) setUser({ ...user, ...data });
+      toast.success('Profile updated!');
+    },
+    onError: () => toast.error('Update failed.'),
   });
 
   const uploadAvatar = useMutation({
-    mutationFn: (file: File) => { const fd = new FormData(); fd.append('avatar', file); return api.post('/auth/avatar', fd, { headers: { 'Content-Type': 'multipart/form-data' } }); },
-    onSuccess: (res) => { if (user) setUser({ ...user, avatar_url: res.data.data.avatar_url }); toast.success('Avatar updated!'); },
+    mutationFn: async (file: File) => {
+      await new Promise(r => setTimeout(r, 600));
+      return URL.createObjectURL(file);
+    },
+    onSuccess: (url: string) => {
+      if (user) setUser({ ...user, avatar_url: url });
+      toast.success('Avatar updated!');
+    },
     onError: () => toast.error('Avatar upload failed.'),
   });
 
   const changePassword = useMutation({
-    mutationFn: (data: any) => api.post('/auth/change-password', data),
-    onSuccess: () => { toast.success('Password changed!'); setPwForm({ current_password: '', password: '', password_confirmation: '' }); },
-    onError: (err: any) => { setErrors(err.response?.data?.errors ?? {}); toast.error(err.response?.data?.error || 'Failed.'); },
+    mutationFn: async (data: any) => {
+      await new Promise(r => setTimeout(r, 400));
+      if (!data.current_password || !data.password) throw new Error('Required');
+      if (data.password !== data.password_confirmation) throw new Error('Mismatch');
+      if (data.password.length < 8) throw new Error('Too short');
+      return true;
+    },
+    onSuccess: () => {
+      toast.success('Password changed!');
+      setPwForm({ current_password: '', password: '', password_confirmation: '' });
+    },
+    onError: (err: any) => toast.error(err.message === 'Mismatch' ? 'Passwords do not match.' : 'Please fill in all password fields.'),
   });
 
   return (
     <div className="max-w-3xl mx-auto space-y-5">
-      <h1 className="text-2xl font-bold text-gray-900">Profile</h1>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Profile</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left: profile card */}
@@ -73,7 +92,7 @@ export default function ProfilePage() {
             </button>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadAvatar.mutate(f); }} />
           </div>
-          <h2 className="text-lg font-bold text-gray-900">{user?.name}</h2>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">{user?.name}</h2>
           <p className="text-sm text-gray-500">{user?.email}</p>
           <Badge variant={user?.subscription_status === 'trial' ? 'trial' : user?.subscription_status === 'active' ? 'active' : 'expired'} className="mt-2">
             {user?.subscription_status === 'trial' ? `${user.trial_days_remaining}d trial left` : user?.subscription_status}

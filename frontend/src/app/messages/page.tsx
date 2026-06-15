@@ -66,11 +66,11 @@ export default function MessagesPage() {
 
   /* ── shared list panel JSX (inlined to avoid focus-loss on re-render) ── */
   const listPanel = (mobile: boolean) => (
-    <div className={mobile ? 'flex flex-col h-full' : 'w-80 flex-shrink-0 border-r border-gray-100 flex flex-col'}>
+    <div className={mobile ? 'flex flex-col h-full' : 'w-80 flex-shrink-0 border-r border-gray-100 dark:border-white/10 flex flex-col'}>
       {/* Header */}
-      <div className="px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
+      <div className="px-4 pt-4 pb-3 border-b border-gray-100 dark:border-white/10 shrink-0">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-gray-900 text-base">Messages</h2>
+          <h2 className="font-bold text-gray-900 dark:text-white text-base">Messages</h2>
           <button className="w-8 h-8 rounded-xl bg-[#F87404]/10 flex items-center justify-center text-[#F87404] hover:bg-[#F87404]/20 transition-colors" title="New message">
             <UserPlus size={15} />
           </button>
@@ -81,7 +81,7 @@ export default function MessagesPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search people or messages..."
-            className="w-full pl-9 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-[#F87404] focus:bg-white transition-colors"
+            className="w-full pl-9 pr-8 py-2.5 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 outline-none focus:border-[#F87404] focus:bg-white dark:focus:bg-white/10 transition-colors"
           />
           {search && (
             <button onClick={() => setSearch('')}
@@ -105,16 +105,16 @@ export default function MessagesPage() {
                   if (mobile) { router.push(`/messages/${conv.id}`); }
                   else { setSelected(conv); setMessages(conv.messages); }
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left border-b border-gray-50
+                className={`w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left border-b border-gray-50 dark:border-white/5
                   ${!mobile && selected.id === conv.id ? 'bg-[#F87404]/5 border-l-2 border-l-[#F87404]' : ''}`}
               >
                 <Avatar src={conv.participant.avatar} name={conv.participant.name} size={44} online={conv.participant.isOnline} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
-                    <p className="font-semibold text-sm text-gray-900 truncate">{conv.participant.name}</p>
+                    <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">{conv.participant.name}</p>
                     <span className="text-[10px] text-gray-400 flex-shrink-0">{conv.time}</span>
                   </div>
-                  <p className={`text-xs truncate mt-0.5 ${conv.unread > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                  <p className={`text-xs truncate mt-0.5 ${conv.unread > 0 ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
                     {conv.lastMessage}
                   </p>
                 </div>
@@ -172,32 +172,32 @@ export default function MessagesPage() {
       <div className="flex-1 min-h-0 flex flex-col max-w-5xl mx-auto w-full">
 
         {/* Mobile */}
-        <div className="md:hidden flex-1 min-h-0 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+        <div className="md:hidden flex-1 min-h-0 bg-white dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden flex flex-col">
           {listPanel(true)}
         </div>
 
         {/* Desktop split view */}
-        <div className="hidden md:flex flex-1 min-h-0 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="hidden md:flex flex-1 min-h-0 bg-white dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
           {listPanel(false)}
 
           {/* Chat */}
           <div className="flex-1 flex flex-col min-w-0">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 shrink-0">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 dark:border-white/10 shrink-0">
               <div className="flex items-center gap-3">
                 <Avatar src={selected.participant.avatar} name={selected.participant.name} size={40} online={selected.participant.isOnline} />
                 <div>
-                  <p className="font-semibold text-sm text-gray-900">{selected.participant.name}</p>
-                  <p className="text-xs text-gray-400">{selected.participant.isOnline ? 'Online now' : 'Offline'}</p>
+                  <p className="font-semibold text-sm text-gray-900 dark:text-white">{selected.participant.name}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">{selected.participant.isOnline ? 'Online now' : 'Offline'}</p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <button className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors"><Phone size={17} /></button>
-                <button className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors"><Video size={17} /></button>
-                <button className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors"><MoreHorizontal size={17} /></button>
+                <button className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"><Phone size={17} /></button>
+                <button className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"><Video size={17} /></button>
+                <button className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"><MoreHorizontal size={17} /></button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5 space-y-3 bg-gray-50/30">
+            <div className="flex-1 overflow-y-auto p-5 space-y-3 bg-gray-50/30 dark:bg-black/10">
               {messages.map(msg => (
                 <div key={msg.id} className={`flex items-end gap-2.5 ${msg.isOwn ? 'flex-row-reverse' : ''}`}>
                   {!msg.isOwn && <Avatar src={selected.participant.avatar} name={selected.participant.name} size={30} />}
@@ -222,14 +222,14 @@ export default function MessagesPage() {
               <div ref={bottomRef} />
             </div>
 
-            <div className="px-5 py-3.5 border-t border-gray-100 shrink-0">
-              <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 focus-within:border-[#F87404] transition-colors">
+            <div className="px-5 py-3.5 border-t border-gray-100 dark:border-white/10 shrink-0">
+              <div className="flex items-center gap-3 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl px-4 py-2.5 focus-within:border-[#F87404] transition-colors">
                 <input
                   value={text}
                   onChange={e => setText(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
                   placeholder="Type a message..."
-                  className="flex-1 bg-transparent text-sm text-gray-900 placeholder-gray-400 outline-none"
+                  className="flex-1 bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 outline-none"
                 />
                 <button onClick={handleSend} disabled={!text.trim()}
                   className="w-8 h-8 rounded-xl bg-[#F87404] flex items-center justify-center text-white hover:bg-[#e06000] transition-colors disabled:opacity-40">

@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import api from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -65,17 +64,11 @@ export default function OnboardingPage() {
 
   const handleSubmit = async () => {
     setLoading(true);
-    try {
-      const payload = { ...form, height_cm: parseFloat(form.height_cm), current_weight_kg: parseFloat(form.current_weight_kg), goal_weight_kg: form.goal_weight_kg ? parseFloat(form.goal_weight_kg) : undefined, daily_calorie_goal: form.daily_calorie_goal || calculatedCalories };
-      const res = await api.post('/onboarding', payload);
-      if (user) setUser({ ...user, onboarding_completed: true, daily_calorie_goal: res.data.data.daily_calorie_goal });
-      toast.success("You're all set! Let's crush your goals 🚀");
-      router.replace('/dashboard');
-    } catch {
-      toast.error('Failed to save. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    await new Promise(r => setTimeout(r, 1000));
+    if (user) setUser({ ...user, onboarding_completed: true, daily_calorie_goal: form.daily_calorie_goal || calculatedCalories } as typeof user);
+    toast.success("You're all set! Let's crush your goals 🚀");
+    router.replace('/dashboard');
+    setLoading(false);
   };
 
   const variants = {

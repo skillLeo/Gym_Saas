@@ -4,8 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, CheckCircle } from 'lucide-react';
-import api from '@/lib/api';
-import { useAuthStore } from '@/store/authStore';
+import { useAuthStore, AuthUser } from '@/store/authStore';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -16,28 +15,49 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
     if (form.password !== form.password_confirmation) {
       setErrors({ password_confirmation: 'Passwords do not match.' });
       return;
     }
+    if (form.password.length < 6) {
+      setErrors({ password: 'Password must be at least 6 characters.' });
+      return;
+    }
+    if (!form.name.trim()) {
+      setErrors({ name: 'Name is required.' });
+      return;
+    }
     setLoading(true);
-    try {
-      const res = await api.post('/auth/register', form);
-      const { token, user } = res.data.data;
-      setAuth(user, token);
+    setTimeout(() => {
+      const newUser: AuthUser = {
+        id: Math.floor(Math.random() * 9000) + 100,
+        name: form.name.trim(),
+        email: form.email.trim().toLowerCase(),
+        avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(form.name.trim())}&background=F87404&color=fff&size=128`,
+        bio: '',
+        is_admin: false,
+        onboarding_completed: false,
+        subscription_status: 'trial',
+        is_on_trial: true,
+        trial_days_remaining: 30,
+        trial_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        member_since: new Date().toISOString().split('T')[0],
+        daily_water_goal_glasses: 8,
+        daily_calorie_goal: 2000,
+        daily_protein_goal_g: 130,
+        daily_carbs_goal_g: 200,
+        daily_fat_goal_g: 65,
+      };
+      const token = `mock-token-${Date.now()}`;
+      setAuth(newUser, token);
       document.cookie = `auth_token=${token}; path=/; max-age=2592000`;
       toast.success('Welcome! Your 30-day free trial has started 🎉');
-      router.replace('/onboarding');
-    } catch (err: any) {
-      const data = err.response?.data;
-      if (data?.errors) setErrors(data.errors);
-      else toast.error(data?.error || 'Registration failed. Please try again.');
-    } finally {
+      router.replace('/auth/onboarding');
       setLoading(false);
-    }
+    }, 800);
   };
 
   const passwordStrength = (() => {

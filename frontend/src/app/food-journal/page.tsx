@@ -10,27 +10,42 @@ import { mockFoodLog } from '@/lib/mockData';
 import {
   Plus, ChevronLeft, ChevronRight, Droplets, Camera, Mic, Barcode,
   Trash2, Search, Coffee, Sun, Sunset, Apple, ChevronDown, ChevronUp,
-  BookOpen, TrendingUp, Check, X
+  BookOpen, TrendingUp, Check, X, Pencil
 } from 'lucide-react';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 
-const meals = [
-  { key: 'breakfast', label: 'Breakfast', icon: Coffee, color: '#F87404', target: 500 },
-  { key: 'lunch', label: 'Lunch', icon: Sun, color: '#004AAD', target: 600 },
-  { key: 'dinner', label: 'Dinner', icon: Sunset, color: '#7C3AED', target: 600 },
-  { key: 'snacks', label: 'Snacks', icon: Apple, color: '#10B981', target: 300 },
-] as const;
+type Meal = {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  color: string;
+  target: number;
+};
 
-type MealKey = 'breakfast' | 'lunch' | 'dinner' | 'snacks';
-
-function getMealCalories(items: typeof mockFoodLog.meals.breakfast) {
-  return items.reduce((sum, i) => sum + i.calories, 0);
-}
+type LogItem = {
+  id: string;
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  serving: string;
+};
 
 type FoodItem = {
   name: string; calories: number; protein: number; carbs: number; fat: number; serving: string;
   images: string[];
 };
+
+const INITIAL_MEALS: Meal[] = [
+  { id: 'breakfast', label: 'Breakfast', icon: Coffee, color: '#F87404', target: 500 },
+  { id: 'lunch',     label: 'Lunch',     icon: Sun,    color: '#004AAD', target: 600 },
+  { id: 'dinner',    label: 'Dinner',    icon: Sunset, color: '#7C3AED', target: 600 },
+  { id: 'snacks',    label: 'Snacks',    icon: Apple,  color: '#10B981', target: 300 },
+];
+
+const SECTION_COLORS = ['#F87404', '#004AAD', '#7C3AED', '#10B981', '#FF0404', '#FFC000', '#06B6D4'];
 
 const ALL_FOODS: FoodItem[] = [
   {
@@ -101,16 +116,74 @@ const ALL_FOODS: FoodItem[] = [
 
 export default function FoodJournalPage() {
   const [date, setDate] = useState(new Date());
-  const [expanded, setExpanded] = useState<MealKey | null>('breakfast');
+  const [meals, setMeals] = useState<Meal[]>(INITIAL_MEALS);
+  const [mealLog, setMealLog] = useState<Record<string, LogItem[]>>(() => ({
+    breakfast: mockFoodLog.meals.breakfast as unknown as LogItem[],
+    lunch:     mockFoodLog.meals.lunch     as unknown as LogItem[],
+    dinner:    mockFoodLog.meals.dinner    as unknown as LogItem[],
+    snacks:    mockFoodLog.meals.snacks    as unknown as LogItem[],
+  }));
+  const [expanded, setExpanded] = useState<string | null>('breakfast');
   const [water, setWater] = useState(mockFoodLog.waterGlasses);
-  const [showAddFood, setShowAddFood] = useState<MealKey | null>(null);
+  const [showAddFood, setShowAddFood] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [imagePicker, setImagePicker] = useState<{ food: FoodItem; selectedIdx: number } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
 
-  const { dailyGoal, consumed, meals: mealData } = mockFoodLog;
+  const { dailyGoal } = mockFoodLog;
+
+  const allItems = Object.values(mealLog).flat();
+  const consumed = {
+    calories: allItems.reduce((s, i) => s + i.calories, 0),
+    protein:  allItems.reduce((s, i) => s + i.protein, 0),
+    carbs:    allItems.reduce((s, i) => s + i.carbs, 0),
+    fat:      allItems.reduce((s, i) => s + i.fat, 0),
+  };
 
   const caloriesLeft = dailyGoal.calories - consumed.calories;
   const caloriesPercent = Math.min((consumed.calories / dailyGoal.calories) * 100, 100);
+
+  const saveMealName = (id: string) => {
+    const name = editingName.trim();
+    if (name) setMeals(prev => prev.map(m => m.id === id ? { ...m, label: name } : m));
+    setEditingId(null);
+  };
+
+  const deleteMeal = (id: string) => {
+    setMeals(prev => prev.filter(m => m.id !== id));
+    setMealLog(prev => { const next = { ...prev }; delete next[id]; return next; });
+    if (expanded === id) setExpanded(null);
+    if (showAddFood === id) setShowAddFood(null);
+  };
+
+  const addMealSection = () => {
+    const id = `meal-${Date.now()}`;
+    const colorIdx = meals.length % SECTION_COLORS.length;
+    const newMeal: Meal = { id, label: `Meal ${meals.length + 1}`, icon: BookOpen, color: SECTION_COLORS[colorIdx], target: 400 };
+    setMeals(prev => [...prev, newMeal]);
+    setMealLog(prev => ({ ...prev, [id]: [] }));
+    setExpanded(id);
+    setTimeout(() => setEditingId(id), 50);
+    setEditingName(`Meal ${meals.length + 1}`);
+  };
+
+  const addItemToMeal = (mealId: string, food: FoodItem) => {
+    const newItem: LogItem = {
+      id: `log-${Date.now()}`,
+      name: food.name,
+      calories: food.calories,
+      protein: food.protein,
+      carbs: food.carbs,
+      fat: food.fat,
+      serving: food.serving,
+    };
+    setMealLog(prev => ({ ...prev, [mealId]: [...(prev[mealId] || []), newItem] }));
+  };
+
+  const deleteItemFromMeal = (mealId: string, itemId: string) => {
+    setMealLog(prev => ({ ...prev, [mealId]: (prev[mealId] || []).filter(i => i.id !== itemId) }));
+  };
 
   const formatDate = (d: Date) => {
     const today = new Date();
@@ -232,37 +305,77 @@ export default function FoodJournalPage() {
         </div>
 
         {/* Meal Sections */}
-        <div className="space-y-3 mb-5">
-          {meals.map(({ key, label, icon: Icon, color, target }) => {
-            const items = mealData[key as MealKey] as typeof mockFoodLog.meals.breakfast;
-            const mealCals = getMealCalories(items);
-            const isExpanded = expanded === key;
+        <div className="space-y-3 mb-4">
+          {meals.map((meal) => {
+            const { id, label, icon: Icon, color, target } = meal;
+            const items = mealLog[id] || [];
+            const mealCals = items.reduce((s, i) => s + i.calories, 0);
+            const isExpanded = expanded === id;
 
             return (
-              <div key={key} className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden shadow-sm">
-                <button
-                  onClick={() => setExpanded(isExpanded ? null : key)}
-                  className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: color + '18' }}>
+              <div key={id} className="group bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden shadow-sm">
+                {/* Header row */}
+                <div className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors">
+                  {/* Left: icon + editable name */}
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: color + '18' }}>
                       <Icon size={18} style={{ color }} />
                     </div>
-                    <div className="text-left">
-                      <div className="font-semibold text-gray-900 dark:text-white text-sm">{label}</div>
+                    <div className="text-left min-w-0">
+                      {editingId === id ? (
+                        <input
+                          autoFocus
+                          value={editingName}
+                          onChange={e => setEditingName(e.target.value)}
+                          onBlur={() => saveMealName(id)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') saveMealName(id);
+                            if (e.key === 'Escape') setEditingId(null);
+                          }}
+                          onClick={e => e.stopPropagation()}
+                          className="font-semibold text-gray-900 dark:text-white text-sm bg-transparent border-b-2 border-[#F87404] outline-none w-32 pb-0.5"
+                        />
+                      ) : (
+                        <button
+                          onClick={e => { e.stopPropagation(); setEditingId(id); setEditingName(label); }}
+                          title="Click to rename"
+                          className="flex items-center gap-1 font-semibold text-gray-900 dark:text-white text-sm hover:text-[#F87404] dark:hover:text-[#F87404] transition-colors group/label"
+                        >
+                          {label}
+                          <Pencil size={11} className="text-gray-300 dark:text-gray-600 group-hover/label:text-[#F87404] opacity-0 group-hover/label:opacity-100 transition-all" />
+                        </button>
+                      )}
                       <div className="text-xs text-gray-500 dark:text-gray-400">{items.length} item{items.length !== 1 ? 's' : ''} · {mealCals} kcal</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+
+                  {/* Right: progress + delete + chevron */}
+                  <div className="flex items-center gap-2 shrink-0">
                     <div className="text-right hidden sm:block">
                       <div className="text-xs text-gray-400">{target} kcal target</div>
                       <div className="w-20 mt-1">
                         <ProgressBar value={Math.min((mealCals / target) * 100, 100)} max={100} color={color} height={3} />
                       </div>
                     </div>
-                    {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+
+                    {/* Delete section button */}
+                    <button
+                      onClick={e => { e.stopPropagation(); deleteMeal(id); toast.success(`${label} removed`); }}
+                      title="Delete section"
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 dark:text-gray-600 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <X size={14} />
+                    </button>
+
+                    {/* Expand toggle */}
+                    <button
+                      onClick={() => setExpanded(isExpanded ? null : id)}
+                      className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                    >
+                      {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                    </button>
                   </div>
-                </button>
+                </div>
 
                 {isExpanded && (
                   <div className="border-t border-gray-100 dark:border-white/[0.07]">
@@ -283,7 +396,10 @@ export default function FoodJournalPage() {
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="font-semibold text-gray-900 dark:text-white text-sm">{item.calories}</span>
-                              <button className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-gray-400 hover:text-red-500 transition-colors">
+                              <button
+                                onClick={() => deleteItemFromMeal(id, item.id)}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-gray-400 hover:text-red-500 transition-colors"
+                              >
                                 <Trash2 size={14} />
                               </button>
                             </div>
@@ -293,7 +409,7 @@ export default function FoodJournalPage() {
                     )}
 
                     {/* Add food to this meal */}
-                    {showAddFood === key ? (
+                    {showAddFood === id ? (
                       <div className="p-4 border-t border-gray-100 dark:border-white/[0.07]">
                         <div className="relative mb-3">
                           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -337,7 +453,7 @@ export default function FoodJournalPage() {
                     ) : (
                       <div className="px-4 pb-4 pt-2">
                         <button
-                          onClick={() => { setShowAddFood(key); setSearchQuery(''); }}
+                          onClick={() => { setShowAddFood(id); setSearchQuery(''); }}
                           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed transition-all text-sm font-medium"
                           style={{ borderColor: color + '40', color }}
                         >
@@ -350,6 +466,14 @@ export default function FoodJournalPage() {
               </div>
             );
           })}
+
+          {/* Add Meal Section button */}
+          <button
+            onClick={addMealSection}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-gray-200 dark:border-white/[0.07] text-gray-400 dark:text-gray-600 hover:border-[#F87404] hover:text-[#F87404] dark:hover:border-[#F87404] dark:hover:text-[#F87404] transition-all text-sm font-medium"
+          >
+            <Plus size={16} /> Add Meal Section
+          </button>
         </div>
 
         {/* Water Tracker */}
@@ -422,7 +546,7 @@ export default function FoodJournalPage() {
       {/* FAB */}
       <div className="fixed bottom-24 right-4 md:bottom-8">
         <button
-          onClick={() => setExpanded('breakfast')}
+          onClick={addMealSection}
           className="w-14 h-14 rounded-full bg-[#F87404] text-white flex items-center justify-center shadow-2xl shadow-orange-500/40 hover:bg-[#e66a00] transition-all active:scale-95">
           <Plus size={24} />
         </button>
@@ -490,7 +614,17 @@ export default function FoodJournalPage() {
                 className="flex-1 py-3 rounded-2xl border border-gray-200 dark:border-white/10 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                 Skip Photo
               </button>
-              <button onClick={() => { setImagePicker(null); setShowAddFood(null); setSearchQuery(''); }}
+              <button
+                onClick={() => {
+                  if (showAddFood && imagePicker) {
+                    addItemToMeal(showAddFood, imagePicker.food);
+                    const mealLabel = meals.find(m => m.id === showAddFood)?.label || 'meal';
+                    toast.success(`${imagePicker.food.name} added to ${mealLabel}!`);
+                  }
+                  setImagePicker(null);
+                  setShowAddFood(null);
+                  setSearchQuery('');
+                }}
                 className="flex-1 py-3 rounded-2xl bg-[#F87404] text-white text-sm font-semibold hover:bg-[#FF5C04] transition-colors shadow-md shadow-orange-500/25 flex items-center justify-center gap-2">
                 <Check size={15} /> Add to Meal
               </button>

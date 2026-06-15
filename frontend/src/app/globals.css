@@ -5,11 +5,12 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-brand-blue: #1E6FD9;
+  --color-brand-blue: #0000FF;
   --color-brand-orange: #F87404;
-  --color-brand-red: #E63946;
-  --color-brand-yellow: #FACC15;
+  --color-brand-red: #FF0404;
+  --color-brand-yellow: #FFC000;
   --color-brand-green: #3FB950;
+  --color-brand-light-blue: #004AAD;
   --color-nav-bg: #F87404;
   --color-card-bg: #ffffff;
   --color-border: #E5E7EB;
@@ -21,11 +22,12 @@
   --bg-primary: #F8F9FA;
   --bg-secondary: #ffffff;
   --bg-card: #ffffff;
-  --blue: #1E6FD9;
+  --blue: #0000FF;
   --orange: #F87404;
-  --red: #E63946;
-  --yellow: #FACC15;
+  --red: #FF0404;
+  --yellow: #FFC000;
   --green: #3FB950;
+  --light-blue: #004AAD;
   --text-primary: #111827;
   --text-secondary: #6B7280;
   --text-muted: #9CA3AF;
@@ -52,19 +54,39 @@ body {
   font-family: var(--font-dm-sans), 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* ── Posey Textured Regular
+     Drop /public/fonts/Posey-Textured-Regular.woff2 to activate.
+     Falls back to Playfair Display until the file is present.        ── */
+@font-face {
+  font-family: 'Posey Textured';
+  src: url('/fonts/Posey-Textured-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 .font-display {
-  font-family: var(--font-display), 'Georgia', serif;
+  font-family: 'Posey Textured', var(--font-display), 'Playfair Display', Georgia, serif;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
+}
+.animate-float {
+  animation: float 3s ease-in-out infinite;
 }
 
 @layer utilities {
   .text-gradient {
-    background: linear-gradient(135deg, #1E6FD9, #F97316);
+    background: linear-gradient(135deg, #0000FF, #F87404);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
   .bg-gradient-brand {
-    background: linear-gradient(135deg, #1E6FD9, #F97316);
+    background: linear-gradient(135deg, #0000FF, #F87404);
   }
   .card {
     background: var(--bg-card);

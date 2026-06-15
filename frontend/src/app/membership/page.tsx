@@ -78,18 +78,18 @@ export default function MembershipPage() {
           ))}
         </div>
 
-        {/* Coming soon notice */}
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
-            <Zap size={18} className="text-blue-500" />
+        {/* Trust strip */}
+        <div className="bg-gradient-to-r from-[#F87404]/5 to-[#004AAD]/5 border border-[#F87404]/20 rounded-2xl p-5 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-[#F87404]/10 flex items-center justify-center shrink-0">
+            <Zap size={18} className="text-[#F87404]" />
           </div>
           <div className="flex-1">
-            <p className="font-bold text-sm text-gray-900 mb-1">Payments coming soon</p>
-            <p className="text-xs text-gray-500 leading-relaxed">Stripe integration is being finalised. You're currently on your free trial. We'll notify you when billing goes live.</p>
+            <p className="font-bold text-sm text-gray-900 dark:text-white mb-0.5">30-Day Free Trial — No Credit Card Required</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">Start your free trial today. Cancel anytime. Over 2,400 members already transforming their fitness with My EXtreme Trainer.</p>
           </div>
-          <Link href="/dashboard"
-            className="shrink-0 flex items-center gap-1.5 text-[#F87404] font-bold text-xs hover:underline">
-            Dashboard <ArrowRight size={12} />
+          <Link href="/auth/register"
+            className="shrink-0 flex items-center gap-1.5 bg-[#F87404] text-white font-bold text-xs px-3 py-2 rounded-xl hover:bg-[#e06000] transition-colors whitespace-nowrap">
+            Start Free <ArrowRight size={12} />
           </Link>
         </div>
       </div>
