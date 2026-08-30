@@ -6,30 +6,88 @@ on:
 
 jobs:
   deploy:
-    name: Deploy Laravel backend
+    name: Build & Deploy (Laravel + Next.js)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── Deploy Laravel over SSH ──────────────────────────────────────
+      # ── Frontend: build HERE, because the server cannot ──────────────
       #
-      # The Next.js build/rsync steps that used to sit here have been removed.
-      # They uploaded `frontend/out/`, which only exists for a STATIC EXPORT,
-      # and this app can no longer be exported statically: it uses Next
-      # middleware (src/proxy.ts) and has dynamic routes with no
-      # generateStaticParams (/social/[username], /recipes/[recipeId],
-      # /videos/[videoId], /resources/[resourceId], /admin/users/[userId] and
-      # both coaching-portal routes). `npm run build` therefore produces
-      # `.next/`, never `out/`, and the rsync step failed on a missing source —
-      # which also meant this Laravel step never ran.
+      # Building on the host fails outright:
+      #     Error: EAGAIN { code: 'ERR_WORKER_INIT_FAILED' }
+      # The shared plan will not let `next build` spawn worker threads. A GitHub
+      # runner has no such limit, so the build happens here and only the output
+      # is shipped.
       #
-      # PHP: the server's default CLI php is 8.2, but composer.json requires
-      # >= 8.3, so bare `composer install` and `php artisan` abort with
+      # This replaces the old `frontend/out/` rsync, which could never have
+      # worked: `out/` only exists for a STATIC EXPORT, and this app cannot be
+      # exported statically — it uses Next middleware (src/proxy.ts) and has
+      # seven dynamic routes with no generateStaticParams. `npm run build`
+      # produces `.next/`, so the step failed on a missing source every run,
+      # which also stopped the Laravel deploy below from ever executing.
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Next.js
+        working-directory: frontend
+        env:
+          # Inlined into the bundle at BUILD time. If this secret is unset the
+          # build silently produces a frontend that talks to nothing, so fail
+          # loudly instead.
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+        run: |
+          set -e
+          if [ -z "$NEXT_PUBLIC_API_URL" ]; then
+            echo "NEXT_PUBLIC_API_URL secret is not set — refusing to ship a build that points nowhere."
+            exit 1
+          fi
+          npm run build
+          echo "--- verifying the API origin was baked in ---"
+          grep -rl "$NEXT_PUBLIC_API_URL" .next/static/chunks/ | head -3
+          if grep -rql "localhost:8001" .next/static/chunks/; then
+            echo "Build contains localhost references — aborting."
+            exit 1
+          fi
+
+      # `.next/cache` and `.next/dev` are build/dev scratch space, not runtime
+      # artefacts — 3.2GB of the former on a local build. Ship neither.
+      # Packaged into the workspace root, so the upload `source` is a simple
+      # relative path — scp-action's strip_components behaviour on absolute
+      # paths like /tmp is easy to get subtly wrong.
+      - name: Package the build
+        working-directory: frontend
+        run: |
+          tar czf "$GITHUB_WORKSPACE/next-build.tar.gz" \
+            --exclude='.next/cache' --exclude='.next/dev' --exclude='.next/trace' .next
+          ls -lh "$GITHUB_WORKSPACE/next-build.tar.gz"
+
+      - name: Upload build to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          source: next-build.tar.gz
+          target: /home/u290685119/
+
+      # ── Deploy both halves over SSH ──────────────────────────────────
+      #
+      # PHP: the server's default CLI php is 8.2 but composer.json requires
+      # >= 8.3, so a bare `composer install` or `php artisan` aborts with
       # "Your Composer dependencies require a PHP version >= 8.3.0".
       # Everything below is pinned to the 8.3 binary explicitly.
-      - name: Deploy Laravel backend
+      - name: Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -40,9 +98,11 @@ jobs:
           script: |
             set -e
             PHP=/opt/alt/php83/usr/bin/php
-            cd /home/u290685119/domains/gyms.skillleo.com/public_html
+            NODE=/opt/alt/alt-nodejs22/root/usr/bin/node
+            APP=/home/u290685119/domains/gyms.skillleo.com/public_html
+            cd $APP
 
-            echo "==> PHP version in use..."
+            echo "==> PHP in use..."
             $PHP -v | head -1
 
             echo "==> Pulling latest code..."
@@ -50,15 +110,42 @@ jobs:
             git reset --hard origin/main
 
             echo "==> Installing PHP dependencies..."
-            $PHP /usr/local/bin/composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+            $PHP /usr/local/bin/composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist || true
+            # Composer's post-install script calls package:discover through
+            # Symfony Process, and proc_open is in this host's
+            # disable_functions — so the install succeeds but the script fails.
+            # Run discovery directly, which needs no subprocess.
+            $PHP artisan package:discover --ansi
 
-            echo "==> Running migrations..."
+            echo "==> Migrations..."
             $PHP artisan migrate --force
 
-            echo "==> Linking public storage..."
-            $PHP artisan storage:link || true
+            echo "==> Unpacking the frontend build..."
+            cd $APP/frontend
+            rm -rf .next
+            tar xzf /home/u290685119/next-build.tar.gz -C $APP/frontend
+            # next-static is a plain COPY of .next/static served straight off
+            # disk by .htaccess. It MUST be refreshed on every deploy: each
+            # build produces new content-hashed chunk filenames, and a stale
+            # copy means every chunk 404s and no page hydrates.
+            rm -rf next-static
+            cp -r .next/static next-static
+            echo "BUILD_ID: $(cat .next/BUILD_ID)"
 
-            echo "==> Clearing and caching Laravel..."
+            echo "==> Restarting Next.js..."
+            # No process manager on this plan: no systemd, no pm2. The server
+            # runs detached and is kept alive by next-keepalive.sh from cron.
+            pkill -f "dist/bin/next" || true
+            sleep 3
+            cd $APP/frontend
+            NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 \
+              setsid nohup $NODE node_modules/next/dist/bin/next start -p 3210 -H 127.0.0.1 \
+              >> /home/u290685119/next.log 2>&1 < /dev/null &
+            sleep 12
+            curl -s -o /dev/null -w "next on 3210: %{http_code}\n" --max-time 15 http://127.0.0.1:3210/
+
+            echo "==> Caching Laravel config..."
+            cd $APP
             $PHP artisan config:clear
             $PHP artisan config:cache
             $PHP artisan route:cache
@@ -67,4 +154,5 @@ jobs:
             echo "==> Permissions..."
             chmod -R 775 storage bootstrap/cache
 
-            echo "==> Deployed successfully!"
+            rm -f /home/u290685119/next-build.tar.gz
+            echo "==> Deployed."
