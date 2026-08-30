@@ -51,6 +51,21 @@ Route::get('/auth/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmai
 Route::post('/stripe/webhook', [\App\Http\Controllers\Api\StripeWebhookController::class, 'handle'])
     ->name('stripe.webhook');
 
+// Scheduler tick, driven by an external cron service.
+//
+// The host cannot run the scheduler from its own cron: the shell's process
+// allowance is exhausted by the Node frontend, so a cron entry dies with
+// "fork: Resource temporarily unavailable" before PHP starts. The web request
+// path has its own pool, so an external caller drives it through here instead.
+//
+// The path is deliberately unremarkable and the token is the whole of the
+// authentication — see SchedulerTickController, which answers 404 to anything
+// without a valid one. Throttled so a leaked URL cannot be used to hammer the
+// server; the controller additionally refuses to run twice within 25 seconds.
+Route::get('/_tick/{token}', \App\Http\Controllers\Api\SchedulerTickController::class)
+    ->middleware('throttle:6,1')
+    ->name('scheduler.tick');
+
 // Public pricing — the pricing page is reachable before signing in.
 Route::get('/plans', [\App\Http\Controllers\Api\SubscriptionController::class, 'plans']);
 

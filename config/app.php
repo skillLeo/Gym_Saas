@@ -56,6 +56,14 @@ return [
     'frontend_url' => env('FRONTEND_URL', 'http://localhost:3000'),
 
     /*
+     * Secret for the HTTP scheduler tick (routes/api.php -> /api/_tick/{token}).
+     * Empty means the endpoint is out of service and answers 404, so a
+     * deployment that forgets to set it fails closed rather than exposing an
+     * unauthenticated way to run commands.
+     */
+    'scheduler_token' => env('SCHEDULER_TOKEN', ''),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------

@@ -52,6 +52,20 @@ return [
 
     'channels' => [
 
+        /*
+         * Scheduler ticks driven over HTTP. Kept out of the main log so there
+         * is one obvious file to look at when answering "is the scheduler
+         * actually firing?", and so a once-a-minute heartbeat cannot bury real
+         * application errors in laravel.log.
+         */
+        'scheduler' => [
+            'driver' => 'daily',
+            'path'   => storage_path('logs/scheduler.log'),
+            'level'  => 'info',
+            'days'   => 7,
+            'replace_placeholders' => true,
+        ],
+
         'stack' => [
             'driver' => 'stack',
             'channels' => explode(',', (string) env('LOG_STACK', 'single')),
