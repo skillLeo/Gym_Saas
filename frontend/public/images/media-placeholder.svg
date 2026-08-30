@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" width="640" height="360" role="img" aria-label="No thumbnail for this video">
+  <!-- Neutral placeholder for a video or live replay whose thumbnail URL is
+       missing or dead. Deliberately a plain graphic rather than a stock fitness
+       photograph: showing someone else's photo as this video's thumbnail would
+       be inventing content. Matches recipe-placeholder.svg. -->
+  <rect width="640" height="360" fill="#F5F5F4"/>
+  <g fill="none" stroke="#D6D3D1" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="196" y="112" width="248" height="150" rx="18"/>
+    <path d="M296 158l70 39-70 39z"/>
+  </g>
+  <text x="320" y="306" font-family="system-ui, -apple-system, Segoe UI, sans-serif"
+        font-size="22" fill="#A8A29E" text-anchor="middle">No thumbnail yet</text>
+</svg>

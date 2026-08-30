@@ -6,45 +6,29 @@ on:
 
 jobs:
   deploy:
-    name: Build & Deploy (Laravel + Next.js)
+    name: Deploy Laravel backend
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Build Next.js static export ──────────────────────────────
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Build Next.js (static export)
-        working-directory: frontend
-        env:
-          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
-        run: npm run build
-
-      # ── 3. Upload Next.js build to server via rsync ──────────────────
-      - name: Upload static frontend to server
-        uses: burnett01/rsync-deployments@7.0.1
-        with:
-          switches: -avz --delete --exclude='.htaccess' --exclude='index.php' --exclude='storage'
-          path: frontend/out/
-          remote_path: /home/u290685119/domains/gyms.skillleo.com/public_html/frontend/out/
-          remote_host: ${{ secrets.SSH_HOST }}
-          remote_port: ${{ secrets.SSH_PORT }}
-          remote_user: ${{ secrets.SSH_USER }}
-          remote_password: ${{ secrets.SSH_PASSWORD }}
-
-      # ── 4. Deploy Laravel via SSH ────────────────────────────────────
+      # ── Deploy Laravel over SSH ──────────────────────────────────────
+      #
+      # The Next.js build/rsync steps that used to sit here have been removed.
+      # They uploaded `frontend/out/`, which only exists for a STATIC EXPORT,
+      # and this app can no longer be exported statically: it uses Next
+      # middleware (src/proxy.ts) and has dynamic routes with no
+      # generateStaticParams (/social/[username], /recipes/[recipeId],
+      # /videos/[videoId], /resources/[resourceId], /admin/users/[userId] and
+      # both coaching-portal routes). `npm run build` therefore produces
+      # `.next/`, never `out/`, and the rsync step failed on a missing source —
+      # which also meant this Laravel step never ran.
+      #
+      # PHP: the server's default CLI php is 8.2, but composer.json requires
+      # >= 8.3, so bare `composer install` and `php artisan` abort with
+      # "Your Composer dependencies require a PHP version >= 8.3.0".
+      # Everything below is pinned to the 8.3 binary explicitly.
       - name: Deploy Laravel backend
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -52,25 +36,33 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
-          command_timeout: 10m
+          command_timeout: 15m
           script: |
             set -e
+            PHP=/opt/alt/php83/usr/bin/php
             cd /home/u290685119/domains/gyms.skillleo.com/public_html
 
+            echo "==> PHP version in use..."
+            $PHP -v | head -1
+
             echo "==> Pulling latest code..."
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
             echo "==> Installing PHP dependencies..."
-            composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+            $PHP /usr/local/bin/composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 
             echo "==> Running migrations..."
-            php artisan migrate --force
+            $PHP artisan migrate --force
+
+            echo "==> Linking public storage..."
+            $PHP artisan storage:link || true
 
             echo "==> Clearing and caching Laravel..."
-            php artisan config:clear
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
+            $PHP artisan config:clear
+            $PHP artisan config:cache
+            $PHP artisan route:cache
+            $PHP artisan view:cache
 
             echo "==> Permissions..."
             chmod -R 775 storage bootstrap/cache

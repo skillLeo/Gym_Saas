@@ -1,9 +1,10 @@
-'use client';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { redirect } from 'next/navigation';
 
+/**
+ * /food-log is legacy; /food-journal is canonical.
+ * Server-side redirect replaces the previous client-side useEffect version,
+ * which rendered an empty page first and then bounced — a visible flash.
+ */
 export default function FoodLogRedirect() {
-  const router = useRouter();
-  useEffect(() => { router.replace('/food-journal'); }, [router]);
-  return null;
+  redirect('/food-journal');
 }

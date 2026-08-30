@@ -1,13 +1,19 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { formatDate } from '@/lib/format';
+import type { Locale } from '@/store/i18nStore';
+import { useI18nStore } from '@/store/i18nStore';
 import { DashboardShell } from '@/components/layout/DashboardShell';
-import { Bot, Send, Sparkles, Dumbbell, Utensils, TrendingDown, BookOpen, User } from 'lucide-react';
+import { Alert } from '@/components/ui/States';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Bot, Send, Sparkles, Dumbbell, Utensils, TrendingDown, BookOpen, User, Trophy} from 'lucide-react';
 import Link from 'next/link';
 
 type Message = { id: string; role: 'user' | 'ai'; text: string; time: string };
 
-const now = () => new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+/** Module scope: the locale is passed in by the caller. */
+const now = (locale: Locale) => formatDate(new Date(), locale, { hour: '2-digit', minute: '2-digit' });
 
 const INITIAL_MESSAGES: Message[] = [
   {
@@ -28,10 +34,10 @@ const INITIAL_MESSAGES: Message[] = [
 ];
 
 const QUICK_PROMPTS = [
-  { icon: Dumbbell,    text: 'Create me a workout plan' },
-  { icon: Utensils,   text: 'Give me a high-protein meal plan' },
-  { icon: TrendingDown, text: 'Help me lose weight fast' },
-  { icon: BookOpen,   text: 'Suggest some healthy recipes' },
+  { icon: Dumbbell,     textKey: 'ai.prompt.workout' },
+  { icon: Utensils,     textKey: 'ai.prompt.meal' },
+  { icon: TrendingDown, textKey: 'ai.prompt.lose' },
+  { icon: BookOpen,     textKey: 'ai.prompt.recipes' },
 ];
 
 const AI_REPLIES: Array<{ keywords: string[]; reply: string }> = [
@@ -71,7 +77,20 @@ function getAIReply(msg: string): string {
   return DEFAULT_REPLY;
 }
 
+/**
+ * The canned replies are authored with markdown bold, and were being
+ * rendered as raw text, so the asterisks appeared on screen. Splitting on the
+ * delimiter and wrapping the odd segments keeps this to real React nodes - no
+ * dangerouslySetInnerHTML, so a reply can never inject markup.
+ */
+function renderBold(text: string) {
+  return text.split('**').map((part, i) =>
+    i % 2 === 1 ? <strong key={i}>{part}</strong> : <span key={i}>{part}</span>,
+  );
+}
+
 export default function AITrainerPage() {
+  const { t, locale } = useI18nStore();
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
@@ -85,13 +104,13 @@ export default function AITrainerPage() {
   const send = (text: string) => {
     const msg = text.trim();
     if (!msg) return;
-    const userMsg: Message = { id: `u-${Date.now()}`, role: 'user', text: msg, time: now() };
+    const userMsg: Message = { id: `u-${Date.now()}`, role: 'user', text: msg, time: now(locale) };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setTyping(true);
     setTimeout(() => {
       setTyping(false);
-      const aiMsg: Message = { id: `ai-${Date.now()}`, role: 'ai', text: getAIReply(msg), time: now() };
+      const aiMsg: Message = { id: `ai-${Date.now()}`, role: 'ai', text: getAIReply(msg), time: now(locale) };
       setMessages(prev => [...prev, aiMsg]);
     }, 1400 + Math.random() * 800);
   };
@@ -100,30 +119,28 @@ export default function AITrainerPage() {
     <DashboardShell fullWidth>
       <div className="flex-1 min-h-0 flex flex-col max-w-3xl mx-auto w-full">
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100 dark:border-white/[0.07] bg-white dark:bg-gray-900 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#F87404] to-[#FF5C04] flex items-center justify-center shadow-lg shadow-[#F87404]/25">
-              <Bot size={20} className="text-white" />
-            </div>
-            <div>
-              <h1 className="font-display font-bold text-gray-900 dark:text-white text-base leading-tight">MET AI Coach</h1>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                <span className="text-xs text-gray-400">Online · always ready</span>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href="/ai-trainer/body-visualizer"
-              className="text-xs px-3 py-1.5 rounded-xl bg-[#F87404]/10 text-[#F87404] font-semibold hover:bg-[#F87404]/20 transition-colors">
-              Body Viz
+        {/* Removed a live green "Online · always ready" indicator. No AI service
+            exists — the replies below are canned strings matched on keywords.
+            The landing page now labels AI "Coming soon", and this screen has to
+            agree with it rather than looking like a working product. */}
+        <PageHeader
+          title={t('ai.title')}
+          subtitle={t('ai.preview')}
+          actions={
+            <Link
+              href="/ai-trainer/achievements"
+              aria-label={t('ai.achievements')}
+              className="h-11 w-11 rounded-sm flex items-center justify-center text-content-secondary hover:text-content-primary hover:bg-surface-sunken transition-colors"
+            >
+              <Trophy size={20} strokeWidth={1.75} />
             </Link>
-            <Link href="/ai-trainer/achievements"
-              className="text-xs px-3 py-1.5 rounded-xl bg-[#FFC000]/10 text-[#FFC000] font-semibold hover:bg-[#FFC000]/20 transition-colors">
-              Achievements
-            </Link>
-          </div>
+          }
+        />
+
+        <div className="px-4 pb-3 shrink-0">
+          <Alert tone="info" title={t('ai.notBuilt')}>
+            {t('ai.previewNotice')}
+          </Alert>
         </div>
 
         {/* Messages */}
@@ -131,35 +148,35 @@ export default function AITrainerPage() {
           {messages.map(msg => (
             <div key={msg.id} className={`flex items-end gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
               {msg.role === 'ai' ? (
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#F87404] to-[#FF5C04] flex items-center justify-center shrink-0">
+                <div className="w-8 h-8 rounded-md bg-gradient-to-br from-[#F87404] to-[#FF5C04] flex items-center justify-center shrink-0">
                   <Bot size={15} className="text-white" />
                 </div>
               ) : (
-                <div className="w-8 h-8 rounded-xl bg-gray-200 dark:bg-white/20 flex items-center justify-center shrink-0">
-                  <User size={15} className="text-gray-600 dark:text-white" />
+                <div className="w-8 h-8 rounded-md bg-gray-200 dark:bg-white/20 flex items-center justify-center shrink-0">
+                  <User size={15} className="text-content-secondary dark:text-white" />
                 </div>
               )}
               <div className={`max-w-[78%] ${msg.role === 'user' ? 'items-end' : 'items-start'} flex flex-col`}>
-                <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-line ${
+                <div className={`px-4 py-3 rounded-md text-sm leading-relaxed shadow-sm whitespace-pre-line ${
                   msg.role === 'user'
-                    ? 'bg-[#F87404] text-white rounded-br-sm'
-                    : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-white/[0.07] rounded-bl-sm'
+                    ? 'bg-accent text-white rounded-br-sm'
+                    : 'bg-surface-raised text-gray-800 dark:text-gray-100 border border-border-subtle rounded-bl-sm'
                 }`}>
-                  {msg.text}
+                  {renderBold(msg.text)}
                 </div>
-                <span className="text-[10px] text-gray-400 mt-1 px-1">{msg.time}</span>
+                <span className="text-[10px] text-content-tertiary mt-1 px-1">{msg.time}</span>
               </div>
             </div>
           ))}
 
           {typing && (
             <div className="flex items-end gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#F87404] to-[#FF5C04] flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-md bg-gradient-to-br from-[#F87404] to-[#FF5C04] flex items-center justify-center shrink-0">
                 <Bot size={15} className="text-white" />
               </div>
-              <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-white/[0.07] px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1 items-center shadow-sm">
+              <div className="bg-surface-raised border border-border-subtle px-4 py-3 rounded-md rounded-bl-sm flex gap-1 items-center shadow-sm">
                 {[0, 1, 2].map(i => (
-                  <div key={i} className="w-2 h-2 rounded-full bg-[#F87404] animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                  <div key={i} className="w-2 h-2 rounded-full bg-accent animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
                 ))}
               </div>
             </div>
@@ -168,38 +185,38 @@ export default function AITrainerPage() {
         </div>
 
         {/* Quick prompts */}
-        <div className="px-4 pt-3 pb-2 flex gap-2 overflow-x-auto scrollbar-hide shrink-0 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-white/[0.07]">
-          {QUICK_PROMPTS.map(({ icon: Icon, text }) => (
-            <button key={text} onClick={() => send(text)}
-              className="flex items-center gap-1.5 whitespace-nowrap px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/10 text-xs font-medium text-gray-700 dark:text-gray-300 hover:border-[#F87404] hover:text-[#F87404] transition-colors shrink-0">
-              <Icon size={13} className="text-[#F87404]" /> {text}
+        <div className="px-4 pt-3 pb-2 flex gap-2 overflow-x-auto scrollbar-hide shrink-0 bg-surface-raised border-t border-border-subtle">
+          {QUICK_PROMPTS.map(({ icon: Icon, textKey }) => (
+            <button key={textKey} onClick={() => send(t(textKey))}
+              className="flex items-center gap-1.5 whitespace-nowrap px-3 py-2 rounded-md bg-surface-sunken border border-border-strong text-xs font-medium text-content-secondary hover:border-accent hover:text-accent transition-colors shrink-0">
+              <Icon size={13} className="text-accent" /> {t(textKey)}
             </button>
           ))}
         </div>
 
         {/* Input */}
-        <div className="px-4 pb-4 pt-2 shrink-0 bg-white dark:bg-gray-900">
-          <div className="flex items-end gap-2 bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/10 rounded-2xl px-4 py-3 focus-within:border-[#F87404] transition-colors">
+        <div className="px-4 pb-4 pt-2 shrink-0 bg-surface-raised">
+          <div className="flex items-end gap-2 bg-surface-sunken border border-border-strong rounded-md px-4 py-3 focus-within:border-accent transition-colors">
             <textarea
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
-              placeholder="Ask your AI coach anything…"
+              placeholder={t('ai.compose')}
               rows={1}
-              className="flex-1 bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 outline-none resize-none leading-relaxed"
+              className="flex-1 bg-transparent text-sm text-content-primary placeholder:text-content-tertiary dark:placeholder-gray-600 field-inset outline-none resize-none leading-relaxed"
               style={{ maxHeight: '120px' }}
             />
             <button
               onClick={() => send(input)}
               disabled={!input.trim() || typing}
-              className="w-9 h-9 rounded-xl bg-[#F87404] flex items-center justify-center text-white hover:bg-[#e06000] transition-colors disabled:opacity-40 shrink-0"
+              className="w-9 h-9 rounded-md bg-accent flex items-center justify-center text-white hover:bg-accent-hover transition-colors disabled:opacity-40 shrink-0"
             >
               <Send size={15} />
             </button>
           </div>
-          <p className="text-center text-[10px] text-gray-400 mt-2">
-            <Sparkles size={10} className="inline mr-1" />MET AI Coach · Powered by My EXtreme Trainer
+          <p className="text-center text-[10px] text-content-tertiary mt-2">
+            <Sparkles size={10} className="inline mr-1" />{t('ai.footer')}
           </p>
         </div>
 

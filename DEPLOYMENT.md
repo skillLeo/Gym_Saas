@@ -52,9 +52,16 @@ php artisan db:seed --force
 
 Go to cPanel → Cron Jobs → Add New Cron Job:
 ```
-*/5 * * * * /usr/local/bin/php /home/yourusername/public_html/artisan schedule:run >> /dev/null 2>&1
+* * * * * cd /home/yourusername/public_html && /usr/local/bin/php artisan schedule:run >> storage/logs/scheduler.log 2>&1
 ```
-This runs every 5 minutes and handles trial processing emails.
+
+Every minute, not `*/5` — Laravel's scheduler expects to be invoked every
+minute and decides internally what is due. On a 5-minute cron, anything not
+landing on a 5-minute boundary is skipped silently.
+
+**A queue worker is also required**, and is not covered here. See
+[QUEUE_SETUP.md](QUEUE_SETUP.md) for both processes, the shared-hosting
+variant, and `php artisan queue:health` to verify they are actually working.
 
 ## Next.js Frontend
 

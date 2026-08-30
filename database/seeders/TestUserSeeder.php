@@ -15,7 +15,16 @@ class TestUserSeeder extends Seeder
             ['email' => 'test@myextremetrainer.com'],
             [
                 'name'                    => 'Test User',
+                // Public profiles are addressed by username (/social/{username}).
+                // Without one these links render as /social/null and land on
+                // "User not found" - which included the client's own account.
+                'username'                 => 'testuser',
                 'password'                => Hash::make('password123'),
+                // Seeded accounts are verified. Without this a fresh seed produces
+                // accounts that cannot use the app at all: EnsureEmailIsVerified
+                // refuses every request with 403 "Please verify your email address",
+                // so the dashboard, membership and everything else fail to load.
+                'email_verified_at'        => now(),
                 'gender'                  => 'male',
                 'date_of_birth'           => '1990-01-15',
                 'height_cm'               => 178,

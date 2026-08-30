@@ -1,172 +1,188 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { formatDate } from '@/lib/format';
+import { useI18nStore } from '@/store/i18nStore';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { Button } from '@/components/ui/Button';
-import { ChevronLeft, Plus, Check, Trash2, Flag, Calendar, Circle } from 'lucide-react';
-import Link from 'next/link';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Plus, Check, Trash2, Flag, Calendar, Circle, Loader2 } from 'lucide-react';
+import api from '@/lib/api';
+import toast from 'react-hot-toast';
 
 type Priority = 'high' | 'medium' | 'low';
-type Todo = { id: string; text: string; done: boolean; priority: Priority; dueDate?: string; category: string };
+type Todo = { id: number; text: string; completed: boolean; priority: Priority; due_date: string | null };
 
-const initialTodos: Todo[] = [
-  { id: '1', text: 'Complete 45-min strength workout', done: false, priority: 'high', category: 'Fitness', dueDate: 'Today' },
-  { id: '2', text: 'Log breakfast and lunch', done: true, priority: 'medium', category: 'Nutrition', dueDate: 'Today' },
-  { id: '3', text: 'Drink 8 glasses of water', done: false, priority: 'medium', category: 'Health', dueDate: 'Today' },
-  { id: '4', text: 'Prepare meal prep for the week', done: false, priority: 'high', category: 'Nutrition', dueDate: 'Sunday' },
-  { id: '5', text: 'Check in with Marcus about group workout', done: false, priority: 'low', category: 'Social' },
-  { id: '6', text: 'Research 5K training plan', done: true, priority: 'low', category: 'Fitness' },
-];
-
-const priorityConfig: Record<Priority, { color: string; label: string }> = {
-  high: { color: '#FF0404', label: 'High' },
-  medium: { color: '#FFC000', label: 'Medium' },
-  low: { color: '#10B981', label: 'Low' },
+const priorityConfig: Record<Priority, { color: string; labelKey: string }> = {
+  high: { color: '#FF0404', labelKey: 'todo.high' },
+  medium: { color: '#FFC000', labelKey: 'todo.medium' },
+  low: { color: '#10B981', labelKey: 'todo.low' },
 };
 
-const categories = ['All', 'Fitness', 'Nutrition', 'Health', 'Social'];
-
 export default function TodoPage() {
-  const [todos, setTodos] = useState(initialTodos);
+  const { t, locale } = useI18nStore();
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'active' | 'done'>('all');
-  const [category, setCategory] = useState('All');
   const [newText, setNewText] = useState('');
   const [newPriority, setNewPriority] = useState<Priority>('medium');
+  const [newDueDate, setNewDueDate] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const toggle = (id: string) => setTodos(p => p.map(t => t.id === id ? { ...t, done: !t.done } : t));
-  const remove = (id: string) => setTodos(p => p.filter(t => t.id !== id));
+  useEffect(() => {
+    api.get('/calendar/todos').then(r => setTodos(r.data.todos ?? [])).catch(() => toast.error(t('todo.error.load'))).finally(() => setLoading(false));
+  }, []);
 
-  const addTodo = () => {
-    if (newText.trim()) {
-      setTodos(p => [...p, { id: Date.now().toString(), text: newText, done: false, priority: newPriority, category: 'Fitness' }]);
+  const toggle = async (id: number) => {
+    setTodos(p => p.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+    try { await api.post(`/calendar/todos/${id}/toggle`); } catch {
+      setTodos(p => p.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+      toast.error(t('todo.error.update'));
+    }
+  };
+
+  const remove = async (id: number) => {
+    setTodos(p => p.filter(t => t.id !== id));
+    try { await api.delete(`/calendar/todos/${id}`); } catch { toast.error(t('todo.error.delete')); }
+  };
+
+  const addTodo = async () => {
+    if (!newText.trim() || saving) return;
+    setSaving(true);
+    try {
+      const res = await api.post('/calendar/todos', {
+        text: newText.trim(),
+        priority: newPriority,
+        due_date: newDueDate || null,
+      });
+      setTodos(p => [res.data.todo, ...p]);
       setNewText('');
+      setNewPriority('medium');
+      setNewDueDate('');
       setShowAdd(false);
+    } catch {
+      toast.error(t('todo.error.add'));
+    } finally {
+      setSaving(false);
     }
   };
 
   const filtered = todos.filter(t => {
-    if (filter === 'active' && t.done) return false;
-    if (filter === 'done' && !t.done) return false;
-    if (category !== 'All' && t.category !== category) return false;
+    if (filter === 'active' && t.completed) return false;
+    if (filter === 'done' && !t.completed) return false;
     return true;
   });
 
-  const done = todos.filter(t => t.done).length;
+  const done = todos.filter(t => t.completed).length;
 
   return (
     <DashboardShell>
       <div className="max-w-lg mx-auto px-4 py-6">
 
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/calendar">
-            <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/[0.07] hover:border-[#004AAD]/40 transition-colors">
-              <ChevronLeft size={18} className="text-gray-600 dark:text-gray-400" />
-            </button>
-          </Link>
-          <div className="flex-1">
-            <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-white">To-Do List</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{done}/{todos.length} tasks complete</p>
-          </div>
-          <Button size="sm" icon={<Plus size={15} />} onClick={() => setShowAdd(true)}>Add Task</Button>
-        </div>
+        <PageHeader
+        title={t('todo.title')}
+        subtitle={t('todo.tasksComplete', { done, total: todos.length })}
+        back="/calendar"
+        actions={<Button size="sm" icon={<Plus size={15} />} onClick={() => setShowAdd(true)}>{t('todo.addTask')}</Button>}
+      />
 
         {/* Progress */}
-        <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] p-4 mb-5 shadow-sm">
+        <div className="bg-surface-raised rounded-md border border-border-subtle p-4 mb-5 shadow-sm">
           <div className="flex items-center justify-between text-sm mb-2">
-            <span className="font-medium text-gray-900 dark:text-white">Today&apos;s Progress</span>
-            <span className="text-[#004AAD] font-bold">{Math.round((done / todos.length) * 100)}%</span>
+            <span className="font-medium text-content-primary">{t('common.todayProgress')}</span>
+            <span className="text-brand-blue-deep font-bold">{todos.length ? Math.round((done / todos.length) * 100) : 0}%</span>
           </div>
-          <div className="h-2.5 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-[#004AAD] rounded-full transition-all" style={{ width: `${(done / todos.length) * 100}%` }} />
+          <div className="h-2.5 bg-surface-sunken rounded-full overflow-hidden">
+            <div className="h-full bg-[#004AAD] rounded-full transition-all" style={{ width: `${todos.length ? (done / todos.length) * 100 : 0}%` }} />
           </div>
-        </div>
-
-        {/* Category Filter */}
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-3 scrollbar-hide">
-          {categories.map(cat => (
-            <button key={cat} onClick={() => setCategory(cat)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 transition-all ${category === cat ? 'bg-[#004AAD] text-white' : 'bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400'}`}>
-              {cat}
-            </button>
-          ))}
         </div>
 
         {/* Status Filter */}
-        <div className="flex bg-gray-100 dark:bg-white/[0.07] p-1 rounded-xl mb-4">
+        <div className="flex bg-gray-100 dark:bg-white/[0.07] p-1 rounded-md mb-4">
           {(['all', 'active', 'done'] as const).map(f => (
             <button key={f} onClick={() => setFilter(f)}
-              className={`flex-1 py-1.5 rounded-lg text-sm font-medium capitalize transition-all ${filter === f ? 'bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
-              {f === 'all' ? 'All' : f === 'active' ? 'Active' : 'Done'}
+              className={`flex-1 py-1.5 rounded-lg text-sm font-medium capitalize transition-all ${filter === f ? 'bg-surface-raised text-content-primary shadow-sm' : 'text-content-secondary'}`}>
+              {f === 'all' ? t('common.all') : f === 'active' ? t('todo.active') : t('common.done')}
             </button>
           ))}
         </div>
 
         {/* Todo List */}
-        <div className="space-y-2 mb-5">
-          {filtered.length === 0 && (
-            <div className="text-center py-10">
-              <Circle size={28} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
-              <p className="text-sm text-gray-400">No tasks here</p>
-            </div>
-          )}
-          {filtered.map(todo => (
-            <div key={todo.id} className={`flex items-start gap-3 p-4 rounded-2xl border transition-all ${todo.done ? 'opacity-60 bg-gray-50 dark:bg-white/[0.03] border-gray-100 dark:border-white/[0.05]' : 'bg-white dark:bg-[#1a1a1a] border-gray-100 dark:border-white/[0.07]'}`}>
-              <button onClick={() => toggle(todo.id)}
-                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all ${todo.done ? 'bg-[#004AAD] border-[#004AAD]' : 'border-gray-300 dark:border-gray-600 hover:border-[#004AAD]'}`}>
-                {todo.done && <Check size={12} className="text-white" />}
-              </button>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-medium ${todo.done ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>
-                  {todo.text}
-                </p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: priorityConfig[todo.priority].color + '20', color: priorityConfig[todo.priority].color }}>
-                    {priorityConfig[todo.priority].label}
-                  </span>
-                  <span className="text-xs text-gray-400">{todo.category}</span>
-                  {todo.dueDate && (
-                    <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Calendar size={10} /> {todo.dueDate}
-                    </span>
-                  )}
-                </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 size={24} className="animate-spin text-brand-blue-deep" />
+          </div>
+        ) : (
+          <div className="space-y-2 mb-5">
+            {filtered.length === 0 && (
+              <div className="text-center py-10">
+                <Circle size={28} className="mx-auto text-content-tertiary dark:text-content-secondary mb-2" />
+                <p className="text-sm text-content-tertiary">{t('todo.empty')}</p>
               </div>
-              <button onClick={() => remove(todo.id)} className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors shrink-0">
-                <Trash2 size={13} />
-              </button>
-            </div>
-          ))}
-        </div>
+            )}
+            {filtered.map(todo => (
+              <div key={todo.id} className={`flex items-start gap-3 p-4 rounded-md border transition-all ${todo.completed ? 'opacity-60 bg-gray-50 dark:bg-white/[0.03] border-gray-100 dark:border-white/[0.05]' : 'bg-surface-raised border-border-subtle'}`}>
+                <button onClick={() => toggle(todo.id)}
+                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all ${todo.completed ? 'bg-[#004AAD] border-[#004AAD]' : 'border-gray-300 dark:border-gray-600 hover:border-[#004AAD]'}`}>
+                  {todo.completed && <Check size={12} className="text-white" />}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-medium ${todo.completed ? 'line-through text-content-tertiary' : 'text-content-primary'}`}>
+                    {todo.text}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: priorityConfig[todo.priority]?.color + '20', color: priorityConfig[todo.priority]?.color }}>
+                      {t(priorityConfig[todo.priority]?.labelKey ?? 'todo.medium')}
+                    </span>
+                    {todo.due_date && (
+                      <span className="text-xs text-content-tertiary flex items-center gap-1">
+                        <Calendar size={10} /> {formatDate(new Date(todo.due_date), locale, { month: 'short', day: 'numeric' })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => remove(todo.id)} className="w-7 h-7 flex items-center justify-center text-content-tertiary hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors shrink-0">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Add Task Modal */}
         {showAdd && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowAdd(false)} />
-            <div className="relative w-full sm:max-w-sm bg-white dark:bg-[#1a1a1a] rounded-t-3xl sm:rounded-3xl p-5 z-10 shadow-2xl border border-gray-100 dark:border-white/[0.07]">
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Add Task</h3>
+            <div className="relative w-full sm:max-w-sm bg-surface-raised rounded-t-3xl sm:rounded-md p-5 z-10 border border-border-subtle">
+              <h3 className="font-semibold text-content-primary mb-4">{t('todo.addTask')}</h3>
               <div className="space-y-3 mb-4">
                 <input value={newText} onChange={e => setNewText(e.target.value)}
-                  placeholder="What do you need to do?" autoFocus
+                  placeholder={t('todo.what')} autoFocus
                   onKeyDown={e => e.key === 'Enter' && addTodo()}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#004AAD]/50" />
+                  className="w-full px-4 py-3 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004AAD]/50" />
                 <div>
-                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 block">Priority</label>
+                  <label className="text-xs font-medium text-content-secondary mb-1.5 block">{t('todo.dueDate')}</label>
+                  <input type="date" value={newDueDate} onChange={e => setNewDueDate(e.target.value)}
+                    className="w-full px-4 py-3 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004AAD]/50" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-content-secondary mb-2 block">{t('todo.priority')}</label>
                   <div className="grid grid-cols-3 gap-2">
                     {(Object.entries(priorityConfig) as [Priority, typeof priorityConfig[Priority]][]).map(([key, cfg]) => (
                       <button key={key} onClick={() => setNewPriority(key)}
-                        className={`py-2 rounded-xl text-xs font-medium capitalize transition-all border-2 ${newPriority === key ? 'text-white border-transparent' : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400'}`}
+                        className={`py-2 rounded-md text-xs font-medium capitalize transition-all border-2 ${newPriority === key ? 'text-white border-transparent' : 'border-border-strong text-content-secondary'}`}
                         style={{ backgroundColor: newPriority === key ? cfg.color : undefined }}>
                         <Flag size={12} className="mx-auto mb-0.5" style={{ color: newPriority === key ? 'white' : cfg.color }} />
-                        {cfg.label}
+                        {t(cfg.labelKey)}
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
               <div className="flex gap-3">
-                <Button variant="ghost" fullWidth onClick={() => setShowAdd(false)}>Cancel</Button>
-                <Button fullWidth style={{ backgroundColor: '#004AAD' }} onClick={addTodo}>Add Task</Button>
+                <Button variant="ghost" fullWidth onClick={() => setShowAdd(false)}>{t('common.cancel')}</Button>
+                <Button fullWidth style={{ backgroundColor: '#004AAD' }} onClick={addTodo} loading={saving}>{t('todo.addTask')}</Button>
               </div>
             </div>
           </div>

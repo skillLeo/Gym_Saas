@@ -1,1 +1,0 @@
-self.__SSG_MANIFEST=new Set(["\u002Fmessages\u002F[conversationId]","\u002Frecipes\u002F[recipeId]","\u002Fsocial\u002F[username]"]);self.__SSG_MANIFEST_CB&&self.__SSG_MANIFEST_CB()

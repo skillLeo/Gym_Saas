@@ -50,7 +50,11 @@ return [
     |
     */
 
-    'expiration' => null,
+    // A token that never expires stays valid forever unless someone explicitly
+    // logs out — there was no ceiling at all before this. 30 days is a hard
+    // upper bound; login()/register() set a tighter per-token expiry on top
+    // of this (both checks must pass, so whichever is sooner wins).
+    'expiration' => 43200,
 
     /*
     |--------------------------------------------------------------------------

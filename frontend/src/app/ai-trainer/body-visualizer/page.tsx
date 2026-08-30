@@ -1,20 +1,20 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { useI18nStore } from '@/store/i18nStore';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { Card } from '@/components/ui/Card';
-import { ChevronLeft, Sparkles, Upload, Camera, Ruler, Target, Wand2, CheckCircle, X } from 'lucide-react';
-import Link from 'next/link';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Sparkles, Upload, Camera, Ruler, Target, Wand2, CheckCircle, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const inputCls = "w-full bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:border-[#F87404] focus:ring-2 focus:ring-[#F87404]/15 transition-all";
+const inputCls = "w-full bg-surface-sunken border border-border-strong rounded-md px-4 py-2.5 text-sm text-content-primary placeholder:text-content-tertiary outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 transition-all";
 
-const BEFORE_IMG = 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=500&fit=crop&crop=face';
-const AFTER_IMG  = 'https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400&h=500&fit=crop&crop=face';
 
 type PhotoSlot = 'before' | 'after';
 
 export default function BodyVisualizerPage() {
+  const { t } = useI18nStore();
   const [photos, setPhotos] = useState<Record<PhotoSlot, string | null>>({ before: null, after: null });
   const [current, setCurrent] = useState({ weight: '185', bodyFat: '22', chest: '42', waist: '34', hips: '40', arms: '14', thighs: '24' });
   const [goal,    setGoal]    = useState({ weight: '170', bodyFat: '15', chest: '44', waist: '30', hips: '38', arms: '16', thighs: '22' });
@@ -36,7 +36,7 @@ export default function BodyVisualizerPage() {
     await new Promise(r => setTimeout(r, 2200));
     setGenerating(false);
     setResult(true);
-    toast.success('Visualization generated!');
+    toast.success(t('bodyViz.generated'));
   };
 
   return (
@@ -44,39 +44,33 @@ export default function BodyVisualizerPage() {
       <div className="max-w-lg mx-auto px-4 py-6 pb-24">
 
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/ai-trainer">
-            <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/[0.07] hover:border-[#F87404]/40 transition-colors">
-              <ChevronLeft size={18} className="text-gray-600 dark:text-gray-400" />
-            </button>
-          </Link>
-          <div>
-            <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-white">Body Visualizer</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">See your transformation before it happens</p>
-          </div>
-        </div>
+        <PageHeader
+        title={t('bodyViz.title')}
+        subtitle={t('bodyViz.subtitle')}
+        back="/ai-trainer"
+      />
 
         {/* AI Banner */}
-        <div className="flex items-center gap-3 bg-gradient-to-r from-[#F87404]/10 to-[#004AAD]/10 border border-[#F87404]/20 rounded-2xl p-4 mb-5">
-          <Sparkles size={18} className="text-[#F87404] shrink-0" />
+        <div className="flex items-center gap-3 bg-gradient-to-r from-[#F87404]/10 to-[#004AAD]/10 border border-accent/20 rounded-md p-4 mb-5">
+          <Sparkles size={18} className="text-accent shrink-0" />
           <div>
-            <div className="text-sm font-semibold text-gray-900 dark:text-white">AI-Powered Transformation Preview</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">Upload photos + enter your stats to generate a realistic before/after visualization</div>
+            <div className="text-sm font-semibold text-content-primary">{t('bodyViz.previewTitle')}</div>
+            <div className="text-xs text-content-secondary">{t('bodyViz.help')}</div>
           </div>
         </div>
 
         {/* Photo Upload */}
         <Card className="mb-5">
           <div className="p-5">
-            <h2 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
-              <Camera size={15} className="text-[#F87404]" /> Progress Photos
+            <h2 className="font-semibold text-content-primary text-sm mb-4 flex items-center gap-2">
+              <Camera size={15} className="text-accent" /> {t('bodyViz.progressPhotos')}
             </h2>
             <div className="grid grid-cols-2 gap-3">
               {(['before', 'after'] as const).map(slot => (
                 <div key={slot}>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 capitalize mb-2">{slot} Photo</p>
+                  <p className="text-xs font-medium text-content-secondary mb-2">{slot === 'before' ? t('bodyViz.beforePhoto') : t('bodyViz.afterPhoto')}</p>
                   {photos[slot] ? (
-                    <div className="relative rounded-2xl overflow-hidden aspect-[3/4]">
+                    <div className="relative rounded-md overflow-hidden aspect-[3/4]">
                       <img src={photos[slot]!} alt={slot} className="w-full h-full object-cover" />
                       <button onClick={() => setPhotos(p => ({ ...p, [slot]: null }))}
                         className="absolute top-2 right-2 w-7 h-7 bg-black/60 rounded-full flex items-center justify-center text-white hover:bg-black/80 transition-colors">
@@ -85,9 +79,9 @@ export default function BodyVisualizerPage() {
                     </div>
                   ) : (
                     <button onClick={() => openUpload(slot)}
-                      className="w-full aspect-[3/4] rounded-2xl border-2 border-dashed border-gray-200 dark:border-white/[0.07] flex flex-col items-center justify-center gap-2 hover:border-[#F87404] hover:bg-[#F87404]/5 transition-all">
-                      <Upload size={22} className="text-gray-300 dark:text-gray-600" />
-                      <span className="text-xs text-gray-400 font-medium">Upload Photo</span>
+                      className="w-full aspect-[3/4] rounded-md border-2 border-dashed border-border-strong flex flex-col items-center justify-center gap-2 hover:border-accent hover:bg-accent/5 transition-all">
+                      <Upload size={22} className="text-content-tertiary dark:text-content-secondary" />
+                      <span className="text-xs text-content-tertiary font-medium">{t('bodyViz.uploadPhoto')}</span>
                     </button>
                   )}
                 </div>
@@ -100,23 +94,24 @@ export default function BodyVisualizerPage() {
         {/* Current Stats */}
         <Card className="mb-5">
           <div className="p-5">
-            <h2 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
-              <Ruler size={15} className="text-[#004AAD]" /> Current Stats
+            <h2 className="font-semibold text-content-primary text-sm mb-4 flex items-center gap-2">
+              <Ruler size={15} className="text-brand-blue-deep" /> {t('bodyViz.currentStats')}
             </h2>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { key: 'weight', label: 'Weight (lbs)' },
-                { key: 'bodyFat', label: 'Body Fat (%)' },
-                { key: 'chest', label: 'Chest (in)' },
-                { key: 'waist', label: 'Waist (in)' },
-                { key: 'hips', label: 'Hips (in)' },
-                { key: 'arms', label: 'Arms (in)' },
-                { key: 'thighs', label: 'Thighs (in)' },
+                { key: 'weight', label: t('common.weightLbs') },
+                { key: 'bodyFat', label: t('bodyViz.bodyFatPct') },
+                { key: 'chest', label: t('bodyViz.chestIn') },
+                { key: 'waist', label: t('bodyViz.waistIn') },
+                { key: 'hips', label: t('bodyViz.hipsIn') },
+                { key: 'arms', label: t('bodyViz.armsIn') },
+                { key: 'thighs', label: t('bodyViz.thighsIn') },
               ].map(({ key, label }) => (
                 <div key={key}>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</label>
-                  <input className={inputCls} type="number" value={current[key as keyof typeof current]}
-                    onChange={e => setCurrent(p => ({ ...p, [key]: e.target.value }))} />
+                  <label className="block text-xs font-medium text-content-secondary mb-1">{label}</label>
+                  <input className={inputCls} type="number" min={0} value={current[key as keyof typeof current]}
+                    onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d*$/.test(v)) setCurrent(p => ({ ...p, [key]: v })); }}
+                    onKeyDown={e => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }} />
                 </div>
               ))}
             </div>
@@ -126,23 +121,24 @@ export default function BodyVisualizerPage() {
         {/* Goal Stats */}
         <Card className="mb-5">
           <div className="p-5">
-            <h2 className="font-semibold text-gray-900 dark:text-white text-sm mb-4 flex items-center gap-2">
-              <Target size={15} className="text-[#10B981]" /> Goal Stats
+            <h2 className="font-semibold text-content-primary text-sm mb-4 flex items-center gap-2">
+              <Target size={15} className="text-[#10B981]" /> {t('bodyViz.goalStats')}
             </h2>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { key: 'weight', label: 'Goal Weight (lbs)' },
-                { key: 'bodyFat', label: 'Goal Body Fat (%)' },
-                { key: 'chest', label: 'Goal Chest (in)' },
-                { key: 'waist', label: 'Goal Waist (in)' },
-                { key: 'hips', label: 'Goal Hips (in)' },
-                { key: 'arms', label: 'Goal Arms (in)' },
-                { key: 'thighs', label: 'Goal Thighs (in)' },
+                { key: 'weight', label: t('bodyViz.goalWeight') },
+                { key: 'bodyFat', label: t('bodyViz.goalBodyFat') },
+                { key: 'chest', label: t('bodyViz.goalChest') },
+                { key: 'waist', label: t('bodyViz.goalWaist') },
+                { key: 'hips', label: t('bodyViz.goalHips') },
+                { key: 'arms', label: t('bodyViz.goalArms') },
+                { key: 'thighs', label: t('bodyViz.goalThighs') },
               ].map(({ key, label }) => (
                 <div key={key}>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</label>
-                  <input className={inputCls} type="number" value={goal[key as keyof typeof goal]}
-                    onChange={e => setGoal(p => ({ ...p, [key]: e.target.value }))} />
+                  <label className="block text-xs font-medium text-content-secondary mb-1">{label}</label>
+                  <input className={inputCls} type="number" min={0} value={goal[key as keyof typeof goal]}
+                    onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d*$/.test(v)) setGoal(p => ({ ...p, [key]: v })); }}
+                    onKeyDown={e => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }} />
                 </div>
               ))}
             </div>
@@ -152,13 +148,13 @@ export default function BodyVisualizerPage() {
         {/* Changes summary */}
         <div className="grid grid-cols-3 gap-3 mb-5">
           {[
-            { label: 'Weight Loss', val: `${parseInt(current.weight) - parseInt(goal.weight)} lbs`, color: '#F87404' },
-            { label: 'Fat Reduction', val: `${parseFloat(current.bodyFat) - parseFloat(goal.bodyFat)}%`, color: '#004AAD' },
-            { label: 'Waist Loss', val: `${parseInt(current.waist) - parseInt(goal.waist)} in`, color: '#10B981' },
+            { label: t('bodyViz.weightLoss'), val: `${parseInt(current.weight) - parseInt(goal.weight)} lbs`, color: '#F87404' },
+            { label: t('bodyViz.fatReduction'), val: `${parseFloat(current.bodyFat) - parseFloat(goal.bodyFat)}%`, color: '#004AAD' },
+            { label: t('bodyViz.waistLoss'), val: `${parseInt(current.waist) - parseInt(goal.waist)} in`, color: '#10B981' },
           ].map(({ label, val, color }) => (
-            <div key={label} className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] p-3 text-center">
+            <div key={label} className="bg-surface-raised rounded-md border border-border-subtle p-3 text-center">
               <div className="font-bold text-lg" style={{ color }}>{val}</div>
-              <div className="text-xs text-gray-400 mt-0.5">{label}</div>
+              <div className="text-xs text-content-tertiary mt-0.5">{label}</div>
             </div>
           ))}
         </div>
@@ -167,16 +163,16 @@ export default function BodyVisualizerPage() {
         <button
           onClick={generate}
           disabled={generating}
-          className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-gradient-to-r from-[#F87404] to-[#FF5C04] text-white font-bold text-base shadow-xl shadow-[#F87404]/30 hover:shadow-[#F87404]/50 transition-all active:scale-[0.98] disabled:opacity-70 mb-5"
+          className="w-full flex items-center justify-center gap-3 py-4 rounded-md bg-gradient-to-r from-[#F87404] to-[#FF5C04] text-white font-bold text-base hover: transition-all active:scale-[0.98] disabled:opacity-70 mb-5"
         >
           {generating ? (
             <>
               <div className="w-5 h-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-              Generating Visualization…
+              {t('bodyViz.generating')}
             </>
           ) : (
             <>
-              <Wand2 size={20} /> Generate AI Visualization
+              <Wand2 size={20} /> {t('bodyViz.generate')}
             </>
           )}
         </button>
@@ -184,20 +180,27 @@ export default function BodyVisualizerPage() {
         {/* Result */}
         {result && (
           <Card className="overflow-hidden">
-            <div className="p-5 border-b border-gray-100 dark:border-white/[0.07] flex items-center justify-between">
+            <div className="p-5 border-b border-border-subtle flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CheckCircle size={16} className="text-[#10B981]" />
-                <span className="font-semibold text-gray-900 dark:text-white text-sm">Your Transformation Preview</span>
+                <span className="font-semibold text-content-primary text-sm">{t('bodyViz.preview')}</span>
               </div>
-              <span className="text-xs bg-[#10B981]/10 text-[#10B981] px-2.5 py-1 rounded-full font-semibold">AI Generated</span>
+              <span className="text-xs bg-[#10B981]/10 text-[#10B981] px-2.5 py-1 rounded-full font-semibold">{t('common.aiGenerated')}</span>
             </div>
             <div className="grid grid-cols-2">
               {[
-                { label: 'NOW', img: BEFORE_IMG, color: '#F87404' },
-                { label: 'GOAL', img: AFTER_IMG,  color: '#10B981' },
+                { label: 'NOW',  img: photos.before, color: '#F87404' },
+                { label: 'GOAL', img: photos.after,  color: '#10B981' },
               ].map(({ label, img, color }) => (
-                <div key={label} className="relative">
-                  <img src={img} alt={label} className="w-full aspect-[3/4] object-cover" />
+                <div key={label} className="relative bg-gray-100 dark:bg-white/5 aspect-[3/4] flex items-center justify-center overflow-hidden">
+                  {img ? (
+                    <img src={img} alt={label} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-content-tertiary">
+                      <Camera size={28} />
+                      <span className="text-xs">{label === 'NOW' ? t('bodyViz.beforePhoto') : 'Goal'}</span>
+                    </div>
+                  )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                   <div className="absolute bottom-3 left-0 right-0 text-center">
                     <span className="text-xs font-bold tracking-widest px-3 py-1 rounded-full text-white" style={{ backgroundColor: color }}>
@@ -208,14 +211,14 @@ export default function BodyVisualizerPage() {
               ))}
             </div>
             <div className="p-4">
-              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+              <p className="text-xs text-content-secondary text-center">
                 This is an AI-estimated visualization based on your stats. Actual results depend on consistency and effort.
               </p>
               <button
-                onClick={() => { toast.success('Visualization saved to your profile!'); }}
-                className="w-full mt-3 py-2.5 rounded-xl border-2 border-[#F87404] text-[#F87404] text-sm font-semibold hover:bg-[#F87404]/10 transition-all"
+                onClick={() => { toast.success(t('bodyViz.saved')); }}
+                className="w-full mt-3 py-2.5 rounded-md border-2 border-accent text-accent text-sm font-semibold hover:bg-accent-surface transition-all"
               >
-                Save to Profile
+                {t('bodyViz.saveToProfile')}
               </button>
             </div>
           </Card>

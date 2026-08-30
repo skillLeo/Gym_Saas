@@ -13,7 +13,7 @@ class DashboardController extends Controller
         $user  = $request->user();
         $today = now()->toDateString();
 
-        $entries = FoodLogEntry::with('foodItem')
+        $entries = FoodLogEntry::with(['foodItem', 'mealSlot'])
             ->where('user_id', $user->id)
             ->where('logged_date', $today)
             ->get();
@@ -23,10 +23,11 @@ class DashboardController extends Controller
             ->first();
         if (!$waterLog) {
             try {
-                $waterLog = WaterLog::create(['user_id' => $user->id, 'logged_date' => $today, 'glasses_count' => 0]);
+                $waterLog = WaterLog::create(['user_id' => $user->id, 'logged_date' => $today, 'glasses_count' => 0, 'total_ounces' => 0]);
             } catch (\Exception $e) {
                 $waterLog = WaterLog::where('user_id', $user->id)->whereDate('logged_date', $today)->firstOrNew();
                 $waterLog->glasses_count ??= 0;
+                $waterLog->total_ounces ??= 0;
             }
         }
 
@@ -37,7 +38,7 @@ class DashboardController extends Controller
         $recent = $entries->take(5)->map(fn($e) => [
             'id'         => $e->id,
             'name'       => $e->foodItem->name,
-            'meal_type'  => $e->meal_type,
+            'meal_type'  => $e->mealSlot->name ?? $e->meal_type,
             'calories'   => $e->total_calories,
         ]);
 
@@ -63,7 +64,9 @@ class DashboardController extends Controller
                 ],
                 'water' => [
                     'glasses_today' => $waterLog->glasses_count,
+                    'ounces_today'  => $waterLog->total_ounces,
                     'goal'          => $user->daily_water_goal_glasses,
+                    'goal_ounces'   => ($user->daily_water_goal_glasses ?? 8) * 8,
                 ],
                 'recent_food_entries' => $recent,
                 'fitness_today' => [

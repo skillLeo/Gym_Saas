@@ -3,24 +3,37 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\FoodItem;
 use App\Models\FoodLogEntry;
+use App\Models\MealSlot;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class FoodLogController extends Controller
 {
     public function index(Request $request)
     {
-        $date    = $request->input('date', now()->toDateString());
+        $date  = $request->input('date', now()->toDateString());
+        $user  = $request->user();
+
+        $slots = MealSlot::where('user_id', $user->id)->orderBy('sort_order')->get();
+        if ($slots->isEmpty()) {
+            MealSlot::seedDefaultsFor($user->id);
+            $slots = MealSlot::where('user_id', $user->id)->orderBy('sort_order')->get();
+        }
+
         $entries = FoodLogEntry::with('foodItem')
-            ->where('user_id', $request->user()->id)
+            ->where('user_id', $user->id)
             ->where('logged_date', $date)
             ->get()
-            ->groupBy('meal_type');
+            ->groupBy('meal_slot_id');
 
         $grouped = [];
-        foreach (['breakfast', 'lunch', 'dinner', 'snack'] as $meal) {
-            $mealEntries = $entries->get($meal, collect());
-            $grouped[$meal] = [
+        foreach ($slots as $slot) {
+            $mealEntries = $entries->get($slot->id, collect());
+            $grouped[] = [
+                'slot_id'        => $slot->id,
+                'name'           => $slot->name,
+                'sort_order'     => $slot->sort_order,
                 'entries'        => $mealEntries->values(),
                 'total_calories' => round($mealEntries->sum('total_calories'), 1),
                 'total_protein'  => round($mealEntries->sum('total_protein_g'), 1),
@@ -36,12 +49,16 @@ class FoodLogController extends Controller
     {
         $validated = $request->validate([
             'food_item_id'  => 'required|exists:food_items,id',
-            'meal_type'     => 'required|in:breakfast,lunch,dinner,snack',
+            'meal_slot_id'  => 'required|exists:meal_slots,id',
             'logged_date'   => 'required|date',
             'servings'      => 'required|numeric|min:0.01|max:100',
-            // Allow inline food creation when food_item_id = 0
-            'food_data'     => 'nullable|array',
+            'image_url'     => 'nullable|string|max:2000',
         ]);
+
+        $slot = MealSlot::findOrFail($validated['meal_slot_id']);
+        if ($slot->user_id !== $request->user()->id) {
+            return response()->json(['success' => false, 'error' => 'Unauthorized.'], 403);
+        }
 
         $food = FoodItem::findOrFail($validated['food_item_id']);
         $mult = (float) $validated['servings'];
@@ -49,13 +66,15 @@ class FoodLogController extends Controller
         $entry = FoodLogEntry::create([
             'user_id'          => $request->user()->id,
             'food_item_id'     => $food->id,
-            'meal_type'        => $validated['meal_type'],
+            'meal_slot_id'     => $slot->id,
+            'meal_type'        => $slot->legacy_key,
             'logged_date'      => $validated['logged_date'],
             'servings'         => $mult,
             'total_calories'   => round($food->calories * $mult, 2),
             'total_protein_g'  => round($food->protein_g * $mult, 2),
             'total_carbs_g'    => round($food->carbs_g * $mult, 2),
             'total_fat_g'      => round($food->fat_g * $mult, 2),
+            'image_url'        => $validated['image_url'] ?? $food->image_url ?? null,
         ]);
 
         return response()->json(['success' => true, 'data' => $entry->load('foodItem'), 'message' => 'Food logged.'], 201);
@@ -72,10 +91,16 @@ class FoodLogController extends Controller
             'food_data.fat_g'        => 'required|numeric|min:0',
             'food_data.serving_qty'  => 'required|numeric',
             'food_data.serving_unit' => 'required|string',
-            'meal_type'   => 'required|in:breakfast,lunch,dinner,snack',
-            'logged_date' => 'required|date',
-            'servings'    => 'required|numeric|min:0.01|max:100',
+            'meal_slot_id' => 'required|exists:meal_slots,id',
+            'logged_date'  => 'required|date',
+            'servings'     => 'required|numeric|min:0.01|max:100',
+            'image_url'    => 'nullable|string|max:2000',
         ]);
+
+        $slot = MealSlot::findOrFail($validated['meal_slot_id']);
+        if ($slot->user_id !== $request->user()->id) {
+            return response()->json(['success' => false, 'error' => 'Unauthorized.'], 403);
+        }
 
         $fd = $validated['food_data'];
 
@@ -101,13 +126,15 @@ class FoodLogController extends Controller
         $entry = FoodLogEntry::create([
             'user_id'         => $request->user()->id,
             'food_item_id'    => $food->id,
-            'meal_type'       => $validated['meal_type'],
+            'meal_slot_id'    => $slot->id,
+            'meal_type'       => $slot->legacy_key,
             'logged_date'     => $validated['logged_date'],
             'servings'        => $mult,
             'total_calories'  => round($food->calories * $mult, 2),
             'total_protein_g' => round($food->protein_g * $mult, 2),
             'total_carbs_g'   => round($food->carbs_g * $mult, 2),
             'total_fat_g'     => round($food->fat_g * $mult, 2),
+            'image_url'       => $validated['image_url'] ?? null,
         ]);
 
         return response()->json(['success' => true, 'data' => $entry->load('foodItem'), 'message' => 'Food logged.'], 201);
@@ -168,18 +195,19 @@ class FoodLogController extends Controller
         $period  = $request->input('period', 'week');
         $days    = $period === 'month' ? 30 : 7;
         $user    = $request->user();
-        $start   = now()->subDays($days - 1)->toDateString();
+        $start   = now()->subDays($days)->toDateString();
+        $end     = now()->addDay()->toDateString();
 
         $entries = FoodLogEntry::where('user_id', $user->id)
-            ->where('logged_date', '>=', $start)
-            ->selectRaw('logged_date, SUM(total_calories) as calories, SUM(total_protein_g) as protein_g, SUM(total_carbs_g) as carbs_g, SUM(total_fat_g) as fat_g')
-            ->groupBy('logged_date')
+            ->whereBetween('logged_date', [$start, $end])
+            ->selectRaw('DATE(logged_date) as logged_date, SUM(total_calories) as calories, SUM(total_protein_g) as protein_g, SUM(total_carbs_g) as carbs_g, SUM(total_fat_g) as fat_g')
+            ->groupBy(DB::raw('DATE(logged_date)'))
             ->orderBy('logged_date')
             ->get()
-            ->keyBy('logged_date');
+            ->keyBy(fn($row) => is_string($row->logged_date) ? substr($row->logged_date, 0, 10) : $row->logged_date->toDateString());
 
         $result = [];
-        for ($i = $days - 1; $i >= 0; $i--) {
+        for ($i = $days - 1; $i >= -1; $i--) {
             $date         = now()->subDays($i)->toDateString();
             $row          = $entries->get($date);
             $result[]     = [

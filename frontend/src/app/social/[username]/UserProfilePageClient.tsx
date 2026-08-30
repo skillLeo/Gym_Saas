@@ -1,662 +1,633 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
-import { mockMembers, mockPosts, mockComments, mockConversations } from '@/lib/mockData';
-import { useSocialStore } from '@/store/socialStore';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Avatar } from '@/components/ui/Avatar';
 import {
-  ChevronLeft, MessageCircle, Heart, MoreHorizontal, Grid3X3,
-  MapPin, Dumbbell, Trophy, Flame, Calendar, UserPlus, UserCheck,
-  Camera, Link2, Share2, Check, Users, Eye, ThumbsUp, Bookmark,
-  Star, Bell,
+  ChevronLeft, MessageCircle, Grid3X3,
+  Dumbbell, Trophy, Calendar, UserPlus, UserCheck,
+  Share2, Users, ThumbsUp, Loader2, X, Plus, Layers, Pencil, Pin
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useAuthStore } from '@/store/authStore';
+import api from '@/lib/api';
+import toast from 'react-hot-toast';
+import { getErrorMessage } from '@/lib/errors';
+import { useI18nStore } from '@/store/i18nStore';
 
 type Tab = 'stream' | 'about' | 'friends' | 'followers' | 'groups';
 
-const reactionEmojis = ['👍', '❤️', '🔥', '😍', '💪', '🎉'];
+interface UserGroup {
+  id: number; name: string; description: string | null; cover_color: string;
+  status: 'pending' | 'approved' | 'rejected'; rejection_reason: string | null;
+  member_count: number; is_member: boolean; is_creator: boolean;
+}
 
-const communityPhotos = [
-  'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=300&h=300&fit=crop',
-  'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=300&h=300&fit=crop',
-  'https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=300&h=300&fit=crop',
-  'https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=300&h=300&fit=crop',
-  'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=300&h=300&fit=crop',
-  'https://images.unsplash.com/photo-1599058945522-28d584b6f0ff?w=300&h=300&fit=crop',
-];
+interface ProfileUser {
+  id: number; name: string; username: string; avatar_url: string;
+  bio: string | null; primary_goal: string | null;
+  is_following: boolean; followers_count: number; following_count: number;
+}
+interface Post {
+  id: number; content: string; image_url: string | null; created_at: string;
+  reactions: Record<string, number>; total_reactions: number; my_reaction: string | null;
+  comment_count: number;
+}
+
+const REACTIONS = ['👍', '❤️', '🔥', '😍', '💪', '🎉'];
+const timeAgo = (iso: string, t: (key: string, params?: Record<string, string | number>) => string) => {
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60000) return t('socialProfile.timeAgo.justNow');
+  if (diff < 3600000) return t('socialProfile.timeAgo.minutes', { n: Math.floor(diff / 60000) });
+  if (diff < 86400000) return t('socialProfile.timeAgo.hours', { n: Math.floor(diff / 3600000) });
+  return t('socialProfile.timeAgo.days', { n: Math.floor(diff / 86400000) });
+};
 
 export default function UserProfilePage() {
-  const params = useParams();
+  const params   = useParams();
   const username = params?.username as string;
-  const { toggleFollow, isFollowing } = useSocialStore();
+  const { user: me } = useAuthStore();
+  const { t } = useI18nStore();
 
-  const member = mockMembers.find(m => m.username === username) || mockMembers[0];
-  const existingConv = mockConversations.find(c => c.participant.id === member.id);
-  const messageHref = existingConv ? `/messages/${existingConv.id}` : '/messages';
-  const [isFriend, setIsFriend] = useState(false);
-  const [isLiked, setIsLiked] = useState(false);
+  const [profile, setProfile]     = useState<ProfileUser | null>(null);
+  const [posts, setPosts]         = useState<Post[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [postsLoading, setPostsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('stream');
-  const [activeReaction, setActiveReaction] = useState<Record<string, string>>({});
-  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
-  const [posts, setPosts] = useState(
-    mockPosts.filter((_, i) => i % 2 === 0).map(p => ({
-      ...p,
-      localLiked: p.isLiked,
-      localLikes: p.likes,
-      showComments: false,
-    }))
-  );
+  const [toggling, setToggling]   = useState(false);
+  const [pinning, setPinning]     = useState(false);
+  const [isPinned, setIsPinned]   = useState(false);
+  const [reactionPicker, setReactionPicker] = useState<number | null>(null);
+  const [following, setFollowing] = useState<ProfileUser[]>([]);
+  const [followingLoading, setFollowingLoading] = useState(false);
+  const [followers, setFollowers] = useState<ProfileUser[]>([]);
+  const [followersLoading, setFollowersLoading] = useState(false);
+  const [messaging, setMessaging] = useState(false);
+  const [groups, setGroups] = useState<UserGroup[]>([]);
+  const [joiningId, setJoiningId] = useState<number | null>(null);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupDesc, setNewGroupDesc] = useState('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
 
-  const toggleLike = (id: string) => {
-    setPosts(prev => prev.map(p =>
-      p.id === id
-        ? { ...p, localLiked: !p.localLiked, localLikes: p.localLiked ? p.localLikes - 1 : p.localLikes + 1 }
-        : p
-    ));
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [pRes, postsRes] = await Promise.all([
+          api.get(`/social/users/${username}`),
+          api.get(`/social/users/${username}/posts`),
+        ]);
+        setProfile(pRes.data.data);
+        setPosts(postsRes.data.data ?? []);
+
+        // Reflect the existing pin so the button does not start out lying.
+        // Allowed to fail quietly — pinning is an enhancement, not part of
+        // loading a profile.
+        try {
+          const pinRes = await api.get('/notifications/pinned');
+          const pinnedIds = (pinRes.data.data ?? []).map((p: { id: number }) => p.id);
+          setIsPinned(pinnedIds.includes(pRes.data.data.id));
+        } catch { /* ignore */ }
+      } catch {
+        toast.error(t('socialProfile.toast.loadFailed'));
+      } finally {
+        setLoading(false);
+        setPostsLoading(false);
+      }
+    };
+    if (username) load();
+  }, [username]);
+
+  const loadFollowing = async () => {
+    if (followingLoading || following.length > 0) return;
+    setFollowingLoading(true);
+    try {
+      const res = await api.get('/social/following', { params: { username } });
+      setFollowing(res.data.data ?? []);
+    } catch {} finally {
+      setFollowingLoading(false);
+    }
   };
 
-  const toggleComments = (id: string) => {
-    setPosts(prev => prev.map(p => p.id === id ? { ...p, showComments: !p.showComments } : p));
+  const loadFollowers = async () => {
+    if (followersLoading || followers.length > 0) return;
+    setFollowersLoading(true);
+    try {
+      const res = await api.get('/social/followers', { params: { username } });
+      setFollowers(res.data.data ?? []);
+    } catch {} finally {
+      setFollowersLoading(false);
+    }
   };
+
+  /**
+   * Join or leave an approved group. Optimistic, with a visible rollback if the
+   * server refuses (for example, a group that was un-approved in the meantime).
+   */
+  const toggleMembership = async (g: UserGroup) => {
+    setJoiningId(g.id);
+    const joining = !g.is_member;
+    const delta = joining ? 1 : -1;
+    setGroups(prev => prev.map(x => x.id === g.id
+      ? { ...x, is_member: joining, member_count: Math.max(0, x.member_count + delta) } : x));
+    try {
+      await api.post(`/groups/${g.id}/${joining ? 'join' : 'leave'}`);
+      toast.success(joining ? t('socialProfile.joinedGroup', { name: g.name }) : t('socialProfile.leftGroup', { name: g.name }));
+    } catch (err) {
+      setGroups(prev => prev.map(x => x.id === g.id
+        ? { ...x, is_member: !joining, member_count: Math.max(0, x.member_count - delta) } : x));
+      toast.error(getErrorMessage(err, t('socialProfile.groupActionFailed')));
+    } finally {
+      setJoiningId(null);
+    }
+  };
+
+  const loadGroups = async () => {
+    if (groupsLoading || groups.length > 0) return;
+    setGroupsLoading(true);
+    try {
+      const isOwnProfile = !!me && me.id === profile?.id;
+      const res = await api.get('/groups', { params: { mine: true, username } });
+      const approved: UserGroup[] = res.data.data ?? [];
+      // /groups/mine also surfaces the caller's own pending/rejected
+      // submissions — private draft state that only makes sense on your own
+      // profile, never while looking at someone else's.
+      if (isOwnProfile) {
+        const mine = await api.get('/groups/mine');
+        const own: UserGroup[] = mine.data.data ?? [];
+        setGroups([...own, ...approved.filter(g => !own.find(o => o.id === g.id))]);
+      } else {
+        setGroups(approved);
+      }
+    } catch {} finally {
+      setGroupsLoading(false);
+    }
+  };
+
+  const handleTabChange = (t: Tab) => {
+    setActiveTab(t);
+    if (t === 'friends') loadFollowing();
+    if (t === 'followers') loadFollowers();
+    if (t === 'groups') loadGroups();
+  };
+
+  const createGroup = async () => {
+    if (!newGroupName.trim()) { toast.error(t('socialProfile.toast.groupNameRequired')); return; }
+    setCreatingGroup(true);
+    try {
+      const res = await api.post('/groups', { name: newGroupName.trim(), description: newGroupDesc.trim() || undefined });
+      setGroups(prev => [res.data.data, ...prev]);
+      setShowCreateGroup(false);
+      setNewGroupName('');
+      setNewGroupDesc('');
+      toast.success(t('socialProfile.toast.groupSubmitted'), { duration: 8000 });
+    } catch (err: any) {
+      toast.error(getErrorMessage(err, t('socialProfile.toast.groupCreateFailed')));
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const messageUser = async () => {
+    if (!profile) return;
+    setMessaging(true);
+    try {
+      const res = await api.post('/messages/start', { user_id: profile.id });
+      window.location.href = `/messages/${res.data.conversation.id}`;
+    } catch {
+      toast.error(t('socialProfile.toast.messageFailed'));
+      setMessaging(false);
+    }
+  };
+
+  const togglePin = async () => {
+    if (!profile) return;
+    setPinning(true);
+    try {
+      const res = await api.post('/notifications/pinned', { user_id: profile.id });
+      setIsPinned(Boolean(res.data.pinned));
+      toast.success(res.data.message);
+    } catch {
+      toast.error(t('socialProfile.toast.pinFailed'));
+    } finally {
+      setPinning(false);
+    }
+  };
+
+  const toggleFollow = async () => {
+    if (!profile) return;
+    setToggling(true);
+    try {
+      const res = await api.post(`/social/follow/${profile.id}`);
+      const isNowFollowing = res.data.action === 'followed';
+      setProfile(p => p ? { ...p, is_following: isNowFollowing, followers_count: res.data.followers_count } : p);
+      toast.success(isNowFollowing ? t('socialProfile.toast.followed', { name: profile.name }) : t('socialProfile.toast.unfollowed', { name: profile.name }));
+    } catch {
+      toast.error(t('socialProfile.toast.followFailed'));
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  const react = async (postId: number, reaction: string) => {
+    setReactionPicker(null);
+    try {
+      const res = await api.post(`/social/posts/${postId}/react`, { reaction });
+      const { reactions, total_reactions, my_reaction } = res.data.data;
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, reactions, total_reactions, my_reaction } : p));
+    } catch {
+      toast.error(t('socialProfile.toast.reactFailed'));
+    }
+  };
+
+  const isMine = me?.id === profile?.id;
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: 'stream', label: 'Stream' },
-    { id: 'about', label: 'About' },
-    { id: 'friends', label: 'Friends', count: member.friends },
-    { id: 'followers', label: 'Followers', count: member.followers },
-    { id: 'groups', label: 'Groups', count: 4 },
+    { id: 'stream',    label: t('socialProfile.tab.stream'),    count: posts.length },
+    { id: 'about',     label: t('socialProfile.tab.about') },
+    { id: 'friends',   label: t('socialProfile.tab.friends'),   count: profile?.following_count },
+    { id: 'followers', label: t('socialProfile.tab.followers'), count: profile?.followers_count },
+    { id: 'groups',    label: t('socialProfile.tab.groups') },
   ];
+
+  if (loading) {
+    return (
+      <DashboardShell>
+        <div className="flex items-center justify-center py-24">
+          <Loader2 size={28} className="animate-spin text-accent" />
+        </div>
+      </DashboardShell>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <DashboardShell>
+        <div className="text-center py-24">
+          <p className="text-content-tertiary">{t('socialProfile.userNotFound')}</p>
+          <Link href="/social" className="text-accent text-sm hover:underline mt-2 block">{t('socialProfile.backToFeed')}</Link>
+        </div>
+      </DashboardShell>
+    );
+  }
 
   return (
     <DashboardShell>
-      {/* ── COVER PHOTO ── */}
-      <div className="relative">
-        <div className="h-52 sm:h-72 lg:h-80 overflow-hidden bg-gradient-to-br from-[#F87404]/30 to-[#FF0404]/20">
-          {member.coverPhoto ? (
-            <img src={member.coverPhoto} alt="Cover" className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full bg-gradient-to-br from-[#F87404] via-[#FF5C04] to-[#FF0404]" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/60" />
-        </div>
+      <div className="max-w-2xl mx-auto pb-20">
 
-        {/* Top action buttons */}
-        <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
-          <Link href="/social">
-            <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-sm border border-white/20 hover:bg-black/60 transition-colors">
-              <ChevronLeft size={18} className="text-white" />
-            </button>
-          </Link>
-          <div className="flex items-center gap-2">
-            <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-sm border border-white/20 hover:bg-black/60 transition-colors">
-              <Share2 size={16} className="text-white" />
-            </button>
-            <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-sm border border-white/20 hover:bg-black/60 transition-colors">
-              <MoreHorizontal size={18} className="text-white" />
-            </button>
-          </div>
-        </div>
+        <PageHeader
+          title={profile.name}
+          subtitle={profile.username ? `@${profile.username}` : undefined}
+          back="/social"
+        />
 
-        {/* Cover photo edit hint */}
-        <div className="absolute bottom-4 right-4">
-          <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/40 backdrop-blur-sm border border-white/20 hover:bg-black/60 transition-colors text-white text-xs">
-            <Camera size={12} />
-            Edit Cover
-          </button>
-        </div>
-      </div>
-
-      {/* ── PROFILE HEADER (white/dark card below cover) ── */}
-      <div className="bg-white dark:bg-[#111] border-b border-gray-100 dark:border-white/[0.07] shadow-sm">
-        <div className="max-w-5xl mx-auto px-4">
-          {/* Avatar row */}
-          <div className="flex items-end justify-between -mt-16 pb-4 relative z-10">
-            {/* Avatar */}
-            <div className="relative group">
-              <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full p-1 bg-white dark:bg-[#111] shadow-xl">
-                <img
-                  src={member.avatar}
-                  alt={member.name}
-                  className="w-full h-full rounded-full object-cover"
-                />
-              </div>
-              {member.isOnline && (
-                <span className="absolute bottom-2 right-2 w-5 h-5 rounded-full bg-green-500 border-3 border-white dark:border-[#111] shadow-sm" />
-              )}
-              <button className="absolute inset-0 rounded-full flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors opacity-0 group-hover:opacity-100">
-                <Camera size={18} className="text-white" />
-              </button>
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex items-center gap-2 pb-2">
-              <button
-                onClick={() => setIsLiked(!isLiked)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all border ${
-                  isLiked
-                    ? 'bg-red-500/10 border-red-500/30 text-red-500'
-                    : 'bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:border-red-400/40'
-                }`}
-              >
-                <Heart size={15} fill={isLiked ? 'currentColor' : 'none'} />
-                <span className="hidden sm:inline">Like</span>
-              </button>
-
-              <Link href={messageHref} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:border-[#004AAD]/40 transition-all">
-                <MessageCircle size={15} />
-                <span className="hidden sm:inline">Message</span>
-              </Link>
-
-              <button
-                onClick={() => setIsFriend(!isFriend)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all border ${
-                  isFriend
-                    ? 'bg-[#004AAD]/10 border-[#004AAD]/30 text-[#004AAD]'
-                    : 'bg-white dark:bg-[#1a1a1a] border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:border-[#004AAD]/40'
-                }`}
-              >
-                {isFriend ? <UserCheck size={15} /> : <UserPlus size={15} />}
-                <span className="hidden sm:inline">{isFriend ? 'Friends' : 'Add Friend'}</span>
-              </button>
-
-              <button
-                onClick={() => toggleFollow(member.id)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-                  isFollowing(member.id)
-                    ? 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/20'
-                    : 'bg-gradient-to-r from-[#F87404] to-[#FF5C04] text-white shadow-md hover:shadow-orange-500/25 hover:shadow-lg'
-                }`}
-              >
-                {isFollowing(member.id) ? <Check size={15} /> : <Bell size={15} />}
-                <span>{isFollowing(member.id) ? 'Following' : 'Follow'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Name + bio */}
-          <div className="pb-4">
-            <div className="flex items-center gap-2.5 mb-1">
-              <h1 className="font-display text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white leading-tight">
-                {member.name}
-              </h1>
-              {/* Verified badge */}
-              <div className="w-6 h-6 rounded-full bg-[#004AAD] flex items-center justify-center shrink-0">
-                <Check size={12} className="text-white" strokeWidth={3} />
-              </div>
-              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/15 border border-amber-400/30">
-                <Star size={10} className="text-amber-500 fill-amber-500" />
-                <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">PRO</span>
-              </div>
-            </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">@{member.username}</p>
-            <p className="text-sm text-gray-700 dark:text-gray-300 max-w-xl leading-relaxed">{member.bio}</p>
-
-            {/* Meta info row */}
-            <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-gray-500 dark:text-gray-400">
-              <span className="flex items-center gap-1">
-                <MapPin size={12} className="text-[#F87404]" />
-                United States
-              </span>
-              <span className="flex items-center gap-1">
-                <Dumbbell size={12} className="text-[#004AAD]" />
-                {member.goal}
-              </span>
-              <span className="flex items-center gap-1">
-                <Calendar size={12} />
-                Joined Jan 2024
-              </span>
-              <span className="flex items-center gap-1">
-                <Link2 size={12} className="text-[#F87404]" />
-                <a href="#" className="text-[#F87404] hover:underline">myextremetrainer.com</a>
-              </span>
-            </div>
-          </div>
-
-          {/* Stats strip */}
-          <div className="flex items-stretch gap-0 border-t border-gray-100 dark:border-white/[0.07] py-4 -mx-4 px-4 overflow-x-auto">
-            {[
-              { label: 'Posts', val: posts.length, icon: Grid3X3, color: '#F87404' },
-              { label: 'Friends', val: member.friends, icon: Users, color: '#10B981' },
-              { label: 'Followers', val: member.followers, icon: UserCheck, color: '#004AAD' },
-              { label: 'Following', val: member.following, icon: UserPlus, color: '#7C3AED' },
-              { label: 'Profile Views', val: '2.4K', icon: Eye, color: '#9ca3af' },
-              { label: 'Streak', val: '16 🔥', icon: Flame, color: '#F87404' },
-            ].map(({ label, val, icon: Icon, color }) => (
-              <div key={label} className="flex flex-col items-center gap-1 px-4 sm:px-6 shrink-0 first:pl-0 border-r border-gray-100 dark:border-white/[0.07] last:border-r-0">
-                <div className="font-display text-xl font-bold text-gray-900 dark:text-white">
-                  {typeof val === 'number' ? val.toLocaleString() : val}
-                </div>
-                <div className="flex items-center gap-1 text-xs text-gray-400">
-                  <Icon size={11} style={{ color }} />
-                  {label}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Tab bar */}
-          <div className="flex items-center gap-0 -mx-1 overflow-x-auto border-t border-gray-100 dark:border-white/[0.07]">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`relative flex items-center gap-1.5 px-4 py-3.5 text-sm font-medium whitespace-nowrap transition-colors ${
-                  activeTab === tab.id
-                    ? 'text-[#F87404]'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                }`}
-              >
-                {tab.label}
-                {tab.count !== undefined && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
-                    activeTab === tab.id
-                      ? 'bg-[#F87404]/15 text-[#F87404]'
-                      : 'bg-gray-100 dark:bg-white/10 text-gray-400'
-                  }`}>{tab.count}</span>
-                )}
-                {activeTab === tab.id && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#F87404] to-[#FF5C04] rounded-full" />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── TAB CONTENT ── */}
-      <div className="max-w-5xl mx-auto px-4 py-5">
-
-        {/* STREAM TAB */}
-        {activeTab === 'stream' && (
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-5">
-
-            {/* Posts feed */}
-            <div className="space-y-4">
-              {posts.map(post => (
-                <div key={post.id} className="bg-white dark:bg-[#1a1a1a] rounded-3xl border border-gray-100 dark:border-white/[0.07] shadow-sm overflow-hidden">
-                  {/* Post header */}
-                  <div className="flex items-start gap-3 p-4 pb-3">
-                    <img src={member.avatar} alt={member.name}
-                      className="w-10 h-10 rounded-full object-cover ring-2 ring-[#F87404]/20 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-sm text-gray-900 dark:text-white">{member.name}</span>
-                        <div className="w-4 h-4 rounded-full bg-[#004AAD] flex items-center justify-center">
-                          <Check size={9} className="text-white" strokeWidth={3} />
-                        </div>
-                      </div>
-                      <div className="text-xs text-gray-400">{post.timeAgo}</div>
-                    </div>
-                    <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors text-gray-400">
-                      <MoreHorizontal size={16} />
+        {/* Cover + avatar — 3-stop gradient flattened to the section accent (§1.1) */}
+        <div className="relative">
+          <div className="h-40 bg-accent" />
+          <div className="px-4">
+            <div className="relative -mt-10 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="relative">
+                <Avatar src={profile.avatar_url} name={profile.name} size="xl"
+                  className="border-4 border-white dark:border-[#0d0d0d]" />
+                {isMine && (
+                  <Link href="/profile/edit">
+                    <button className="absolute bottom-0 right-0 w-7 h-7 bg-accent rounded-full flex items-center justify-center hover:bg-accent-hover transition-colors">
+                      <Pencil size={12} className="text-white" />
                     </button>
-                  </div>
+                  </Link>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2 sm:mb-2">
+                {!isMine && (
+                  <>
+                    <button onClick={toggleFollow} disabled={toggling}
+                      className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold transition-all ${profile.is_following ? 'bg-surface-sunken text-content-secondary hover:bg-red-50 hover:text-red-500' : 'bg-accent text-white hover:bg-accent-hover'}`}>
+                      {toggling
+                        ? <Loader2 size={14} className="animate-spin" />
+                        : profile.is_following ? <><UserCheck size={14} /> {t('socialProfile.following')}</> : <><UserPlus size={14} /> {t('socialProfile.follow')}</>}
+                    </button>
+                    <button onClick={messageUser} disabled={messaging}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-surface-raised border border-border-strong text-content-secondary hover:border-accent/40 transition-all disabled:opacity-60">
+                      {messaging ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />} {t('socialProfile.message')}
+                    </button>
+                    {/* Pin (§5.7): highlights this member's activity in your own
+                        notification feed. Styling only — it never reorders it. */}
+                    <button onClick={togglePin} disabled={pinning}
+                      aria-pressed={isPinned}
+                      title={isPinned ? t('socialProfile.unpinTitle') : t('socialProfile.pinTitle')}
+                      className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold transition-all disabled:opacity-60 ${isPinned ? 'bg-accent-surface text-accent border border-accent/40' : 'bg-surface-raised border border-border-strong text-content-secondary hover:border-accent/40'}`}>
+                      {pinning ? <Loader2 size={14} className="animate-spin" /> : <Pin size={14} />}
+                      {isPinned ? t('socialProfile.pinned') : t('socialProfile.pin')}
+                    </button>
+                  </>
+                )}
+                {isMine && (
+                  <Link href="/profile/edit">
+                    <button className="flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-surface-raised border border-border-strong text-content-secondary hover:border-accent/40 transition-all">
+                      {t('socialProfile.editProfile')}
+                    </button>
+                  </Link>
+                )}
+                <button className="w-9 h-9 flex items-center justify-center rounded-md bg-surface-raised border border-border-strong text-content-secondary hover:text-accent hover:border-accent/40 transition-all">
+                  <Share2 size={15} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
-                  {/* Post text */}
-                  <div className="px-4 pb-3">
-                    <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">{post.content}</p>
-                  </div>
+        {/* Profile info */}
+        <div className="px-4 pt-3 pb-4">
+          <h1 className="text-xl font-bold text-content-primary">{profile.name}</h1>
+          <p className="text-sm text-content-tertiary">@{profile.username}</p>
+          {profile.bio && <p className="text-sm text-content-secondary mt-2">{profile.bio}</p>}
+          {profile.primary_goal && (
+            <span className="inline-flex items-center gap-1 mt-2 text-xs font-medium text-accent bg-accent-surface px-2.5 py-1 rounded-full">
+              <Dumbbell size={11} /> {profile.primary_goal.replace(/_/g, ' ')}
+            </span>
+          )}
+          <div className="flex gap-4 mt-3 text-sm">
+            <span><strong className="text-content-primary">{profile.followers_count}</strong> <span className="text-content-tertiary">{t('socialProfile.statFollowers')}</span></span>
+            <span><strong className="text-content-primary">{profile.following_count}</strong> <span className="text-content-tertiary">{t('socialProfile.statFollowing')}</span></span>
+            <span><strong className="text-content-primary">{posts.length}</strong> <span className="text-content-tertiary">{t('socialProfile.statPosts')}</span></span>
+          </div>
+        </div>
 
-                  {/* Post images */}
-                  {post.images.length > 0 && (
-                    <div className={`grid gap-0.5 ${post.images.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                      {post.images.slice(0, 4).map((img, i) => (
-                        <div key={i} className={`overflow-hidden ${post.images.length === 1 ? 'rounded-none' : i === 0 && post.images.length === 3 ? 'row-span-2' : ''}`}>
-                          <img src={img} alt="" className="w-full object-cover hover:scale-105 transition-transform duration-300 cursor-pointer"
-                            style={{ height: post.images.length === 1 ? 280 : 180 }} />
-                        </div>
-                      ))}
-                    </div>
-                  )}
+        {/* Tabs */}
+        <div className="flex border-b border-border-subtle px-4">
+          {tabs.map(({ id, label, count }) => (
+            <button key={id} onClick={() => handleTabChange(id)}
+              className={`flex-1 py-3 text-sm font-semibold text-center transition-colors relative ${activeTab === id ? 'text-accent' : 'text-content-secondary hover:text-content-secondary'}`}>
+              {label}
+              {count !== undefined && <span className="ml-1 text-xs text-content-tertiary">({count})</span>}
+              {activeTab === id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />}
+            </button>
+          ))}
+        </div>
 
-                  {/* Reaction counts */}
-                  <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-50 dark:border-white/[0.04]">
-                    <div className="flex items-center gap-1.5">
-                      <div className="flex -space-x-1">
-                        {['👍', '❤️', '🔥'].map(e => (
-                          <span key={e} className="w-5 h-5 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center text-[10px]">{e}</span>
-                        ))}
-                      </div>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">{post.localLikes.toLocaleString()}</span>
-                    </div>
-                    <span className="text-xs text-gray-400">{post.comments} comments</span>
-                  </div>
-
-                  {/* Action bar */}
-                  <div className="flex items-center border-t border-gray-100 dark:border-white/[0.07]">
-                    {/* Like with reaction picker — bridge prevents gap flicker */}
-                    <div className="relative flex-1"
-                      onMouseEnter={() => setShowReactionPicker(post.id)}
-                      onMouseLeave={() => setShowReactionPicker(null)}
-                    >
-                      <button
-                        onClick={() => toggleLike(post.id)}
-                        className={`w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.04] ${
-                          post.localLiked ? 'text-[#F87404]' : 'text-gray-500 dark:text-gray-400'
-                        }`}
-                      >
-                        {activeReaction[post.id]
-                          ? <span className="text-base leading-none">{activeReaction[post.id]}</span>
-                          : <ThumbsUp size={16} fill={post.localLiked ? 'currentColor' : 'none'} />
-                        }
-                        <span>{activeReaction[post.id] === '👍' ? 'Like' : activeReaction[post.id] === '❤️' ? 'Love' : activeReaction[post.id] === '🔥' ? 'Fire' : activeReaction[post.id] ? 'React' : 'Like'}</span>
-                      </button>
-                      {showReactionPicker === post.id && (
-                        <div className="absolute bottom-full left-2 z-20">
-                          <div className="flex items-center gap-1 px-3 py-2 bg-white dark:bg-[#1e1e1e] rounded-2xl shadow-xl border border-gray-100 dark:border-white/10 mb-1">
-                            {reactionEmojis.map(emoji => (
-                              <button key={emoji}
-                                onClick={() => {
-                                  setActiveReaction(prev => ({ ...prev, [post.id]: emoji }));
-                                  setShowReactionPicker(null);
-                                  setPosts(prev => prev.map(p =>
-                                    p.id === post.id ? { ...p, localLiked: true, localLikes: p.localLiked ? p.localLikes : p.localLikes + 1 } : p
-                                  ));
-                                }}
-                                className="text-xl hover:scale-125 transition-transform active:scale-95 w-8 h-8 flex items-center justify-center"
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </div>
-                          {/* Invisible bridge: fills gap between popup and button so onMouseLeave doesn't fire */}
-                          <div className="h-2" />
+        {/* Tab content */}
+        <div className="px-4 pt-4">
+          {activeTab === 'stream' && (
+            postsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={24} className="animate-spin text-accent" />
+              </div>
+            ) : posts.length === 0 ? (
+              <div className="text-center py-12">
+                <Grid3X3 size={28} className="mx-auto mb-2 text-content-tertiary dark:text-content-secondary" />
+                <p className="text-sm text-content-tertiary">{t('socialProfile.noPostsYet')}</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {posts.map(post => (
+                  <div key={post.id} className="bg-surface-raised rounded-md border border-border-subtle shadow-sm overflow-hidden">
+                    <div className="p-4">
+                      <p className="text-sm text-content-primary whitespace-pre-wrap leading-relaxed">{post.content}</p>
+                      {post.image_url && (
+                        <div className="mt-3 rounded-md overflow-hidden">
+                          <img src={post.image_url} alt="Post" className="w-full max-h-80 object-cover" />
                         </div>
                       )}
                     </div>
-                    <button
-                      onClick={() => toggleComments(post.id)}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors"
-                    >
-                      <MessageCircle size={16} />
-                      Comment
-                    </button>
-                    <button className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors">
-                      <Share2 size={16} />
-                      Share
-                    </button>
-                    <button className="flex items-center justify-center py-2.5 px-4 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors">
-                      <Bookmark size={16} />
-                    </button>
-                  </div>
-
-                  {/* Comments */}
-                  {post.showComments && (
-                    <div className="px-4 pb-4 pt-2 border-t border-gray-50 dark:border-white/[0.04] space-y-3">
-                      {mockComments.slice(0, 2).map(c => (
-                        <div key={c.id} className="flex gap-2.5">
-                          <img src={c.author.avatar} alt={c.author.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
-                          <div className="flex-1">
-                            <div className="bg-gray-50 dark:bg-white/[0.05] rounded-2xl px-3 py-2">
-                              <span className="text-xs font-semibold text-gray-900 dark:text-white mr-1.5">{c.author.name}</span>
-                              <span className="text-xs text-gray-700 dark:text-gray-300">{c.text}</span>
+                    {/* Reaction bar */}
+                    <div className="flex items-center justify-between px-4 pb-3 border-t border-gray-50 dark:border-white/[0.04] pt-3">
+                      <div className="flex items-center gap-1 text-xs text-content-tertiary">
+                        {Object.keys(post.reactions).slice(0, 3).map(r => <span key={r}>{r}</span>)}
+                        {post.total_reactions > 0 && <span>{post.total_reactions}</span>}
+                      </div>
+                      <div className="flex gap-2 relative">
+                        <div className="relative">
+                          <button
+                            onMouseEnter={() => setReactionPicker(post.id)}
+                            onClick={() => react(post.id, post.my_reaction ?? '👍')}
+                            className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg transition-colors ${post.my_reaction ? 'text-accent bg-accent-surface' : 'text-content-secondary hover:bg-gray-100 dark:hover:bg-white/10'}`}>
+                            {post.my_reaction ? <span>{post.my_reaction}</span> : <ThumbsUp size={13} />}
+                            <span>{t('socialProfile.like')}</span>
+                          </button>
+                          {reactionPicker === post.id && (
+                            <div onMouseLeave={() => setReactionPicker(null)}
+                              className="absolute bottom-full right-0 mb-2 bg-white dark:bg-[#222] border border-border-strong rounded-md p-2 flex gap-1 z-10">
+                              {REACTIONS.map(r => (
+                                <button key={r} onClick={() => react(post.id, r)}
+                                  className="text-xl hover:scale-125 transition-transform w-9 h-9 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-white/10">{r}</button>
+                              ))}
                             </div>
-                            <div className="flex items-center gap-3 mt-1 ml-2">
-                              <button className="text-[10px] text-gray-400 hover:text-[#F87404] transition-colors font-medium">Like</button>
-                              <button className="text-[10px] text-gray-400 hover:text-[#F87404] transition-colors font-medium">Reply</button>
-                              <span className="text-[10px] text-gray-300 dark:text-gray-600">{c.timeAgo}</span>
-                            </div>
-                          </div>
+                          )}
                         </div>
-                      ))}
-                      <div className="flex gap-2.5">
-                        <img src={mockMembers[0].avatar} alt="me" className="w-7 h-7 rounded-full object-cover shrink-0" />
-                        <input
-                          placeholder="Write a comment…"
-                          className="flex-1 bg-gray-50 dark:bg-white/[0.05] rounded-2xl px-3 py-2 text-xs text-gray-800 dark:text-gray-200 placeholder-gray-400 border-none outline-none focus:ring-2 focus:ring-[#F87404]/20"
-                        />
+                        <p className="text-xs text-content-tertiary self-center">{timeAgo(post.created_at, t)}</p>
                       </div>
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
 
-            {/* Right sidebar for stream */}
-            <aside className="space-y-4">
-              {/* Fitness highlights */}
-              <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden shadow-sm">
-                <div className="px-4 py-3 border-b border-gray-100 dark:border-white/[0.07] flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Fitness Highlights</h3>
-                  <Trophy size={15} className="text-amber-500" />
-                </div>
-                <div className="p-3 space-y-2">
-                  {[
-                    { label: '16 Day Streak', sub: 'Keep it up!', icon: '🔥', color: '#F87404' },
-                    { label: '4 Achievements', sub: 'Latest: Iron Will', icon: '🏆', color: '#FFC000' },
-                    { label: 'Strength Goal', sub: '78% complete', icon: '💪', color: '#004AAD' },
-                    { label: '12 Workouts', sub: 'This month', icon: '🏋️', color: '#10B981' },
-                  ].map(({ label, sub, icon, color }) => (
-                    <div key={label} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors cursor-pointer">
-                      <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ backgroundColor: color + '18' }}>
-                        {icon}
-                      </div>
-                      <div>
-                        <div className="text-xs font-semibold text-gray-900 dark:text-white">{label}</div>
-                        <div className="text-[10px] text-gray-400">{sub}</div>
-                      </div>
-                    </div>
-                  ))}
+          {activeTab === 'about' && (
+            <div className="space-y-4">
+              <div className="bg-surface-raised rounded-md border border-border-subtle p-5 shadow-sm">
+                <h3 className="font-semibold text-content-primary text-sm mb-3">{t('socialProfile.aboutName', { name: profile.name })}</h3>
+                {profile.bio ? (
+                  <p className="text-sm text-content-secondary">{profile.bio}</p>
+                ) : (
+                  <p className="text-sm text-content-tertiary italic">{t('socialProfile.noBio')}</p>
+                )}
+                {profile.primary_goal && (
+                  <div className="mt-4 flex items-center gap-2 text-sm text-content-secondary">
+                    <Trophy size={15} className="text-accent" />
+                    <span>{t('socialProfile.goalPrefix')} <strong className="text-content-primary capitalize">{profile.primary_goal.replace(/_/g, ' ')}</strong></span>
+                  </div>
+                )}
+                <div className="mt-3 flex items-center gap-2 text-sm text-content-tertiary">
+                  <Calendar size={14} />
+                  <span>{t('socialProfile.memberOfTeamExtreme')}</span>
                 </div>
               </div>
-
-              {/* Photos */}
-              <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden shadow-sm">
-                <div className="px-4 py-3 border-b border-gray-100 dark:border-white/[0.07] flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Photos</h3>
-                  <button className="text-xs text-[#F87404] font-medium hover:underline">See all</button>
-                </div>
-                <div className="grid grid-cols-3 gap-0.5 p-0.5">
-                  {communityPhotos.map((img, i) => (
-                    <div key={i} className="aspect-square overflow-hidden">
-                      <img src={img} alt="" className="w-full h-full object-cover hover:scale-110 transition-transform duration-300 cursor-pointer" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Mutual Friends */}
-              <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden shadow-sm">
-                <div className="px-4 py-3 border-b border-gray-100 dark:border-white/[0.07]">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Mutual Friends <span className="text-gray-400 font-normal">· {member.friends}</span></h3>
-                </div>
-                <div className="p-3 grid grid-cols-3 gap-2">
-                  {mockMembers.slice(1, 7).map(m => (
-                    <Link key={m.id} href={`/social/${m.username}`}>
-                      <div className="flex flex-col items-center gap-1 cursor-pointer group">
-                        <img src={m.avatar} alt={m.name}
-                          className="w-14 h-14 rounded-xl object-cover group-hover:scale-105 transition-transform ring-2 ring-transparent group-hover:ring-[#F87404]/30" />
-                        <span className="text-[10px] text-gray-600 dark:text-gray-400 text-center line-clamp-1">{m.name.split(' ')[0]}</span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </aside>
-          </div>
-        )}
-
-        {/* ABOUT TAB */}
-        {activeTab === 'about' && (
-          <div className="max-w-2xl space-y-4">
-            {[
-              {
-                title: 'Personal Info',
-                items: [
-                  { icon: '👤', label: 'Full Name', val: member.name },
-                  { icon: '📍', label: 'Location', val: 'United States' },
-                  { icon: '📅', label: 'Joined', val: 'January 2024' },
-                  { icon: '🎯', label: 'Goal', val: member.goal },
-                ]
-              },
-              {
-                title: 'Fitness Profile',
-                items: [
-                  { icon: '🏋️', label: 'Specialty', val: 'Strength & Conditioning' },
-                  { icon: '🔥', label: 'Current Streak', val: '16 days' },
-                  { icon: '📊', label: 'Level', val: 'Intermediate' },
-                  { icon: '⏱️', label: 'Avg Workout', val: '52 minutes' },
-                ]
-              },
-            ].map(section => (
-              <div key={section.title} className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden shadow-sm">
-                <div className="px-5 py-3.5 border-b border-gray-100 dark:border-white/[0.07]">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{section.title}</h3>
-                </div>
-                <div className="divide-y divide-gray-50 dark:divide-white/[0.04]">
-                  {section.items.map(({ icon, label, val }) => (
-                    <div key={label} className="flex items-center gap-4 px-5 py-3">
-                      <span className="text-lg w-6 text-center">{icon}</span>
-                      <span className="text-sm text-gray-500 dark:text-gray-400 w-32 shrink-0">{label}</span>
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">{val}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {/* Badges / Achievements */}
-            <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden shadow-sm">
-              <div className="px-5 py-3.5 border-b border-gray-100 dark:border-white/[0.07]">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Achievements</h3>
-              </div>
-              <div className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {[
-                  { icon: '🔥', title: '30 Day Streak', date: 'Apr 2025' },
-                  { icon: '🏋️', title: 'First 200lb Lift', date: 'Mar 2025' },
-                  { icon: '🏃', title: '5K Personal Best', date: 'Feb 2025' },
-                  { icon: '⚖️', title: '10 lbs Lost', date: 'Jan 2025' },
-                ].map(({ icon, title, date }) => (
-                  <div key={title} className="flex flex-col items-center p-4 bg-gray-50 dark:bg-white/[0.04] rounded-2xl text-center hover:bg-[#F87404]/5 dark:hover:bg-[#F87404]/10 transition-colors">
-                    <div className="text-3xl mb-2">{icon}</div>
-                    <div className="text-xs font-semibold text-gray-900 dark:text-white leading-tight">{title}</div>
-                    <div className="text-[10px] text-gray-400 mt-0.5">{date}</div>
+                  { labelKey: 'socialProfile.statCard.followers',  val: profile.followers_count, icon: Users,   color: '#F87404' },
+                  { labelKey: 'socialProfile.statCard.following',  val: profile.following_count, icon: UserPlus, color: '#004AAD' },
+                  { labelKey: 'socialProfile.statCard.posts',      val: posts.length,            icon: Grid3X3,  color: '#10B981' },
+                  { labelKey: 'socialProfile.statCard.workouts',   val: '—',                     icon: Dumbbell, color: '#FF0404' },
+                ].map(({ labelKey, val, icon: Icon, color }) => (
+                  <div key={labelKey} className="bg-surface-raised rounded-md border border-border-subtle p-4 shadow-sm text-center">
+                    <Icon size={18} className="mx-auto mb-1" style={{ color }} />
+                    <p className="text-xl font-black text-content-primary">{val}</p>
+                    <p className="text-xs text-content-tertiary">{t(labelKey)}</p>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* FRIENDS TAB */}
-        {activeTab === 'friends' && (
-          <div>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="flex-1 relative">
-                <input
-                  placeholder={`Search ${member.name.split(' ')[0]}'s friends…`}
-                  className="w-full h-10 pl-10 pr-4 rounded-xl bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-white/10 text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400 outline-none focus:ring-2 focus:ring-[#F87404]/20"
-                />
-                <Users size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          {activeTab === 'friends' && (
+            followingLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={24} className="animate-spin text-accent" />
               </div>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {mockMembers.map(m => {
-                const following = isFollowing(m.id);
-                return (
-                  <div key={m.id} className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
-                    <div className="h-20 bg-gradient-to-br from-[#F87404]/20 to-[#FF5C04]/10 relative">
-                      {m.coverPhoto && <img src={m.coverPhoto} alt="" className="w-full h-full object-cover" />}
+            ) : following.length === 0 ? (
+              <div className="text-center py-12">
+                <Users size={28} className="mx-auto mb-2 text-content-tertiary dark:text-content-secondary" />
+                <p className="text-sm text-content-tertiary">{t('socialProfile.notFollowingYet')}</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {following.map(u => (
+                  <Link key={u.id} href={`/social/${u.username}`}>
+                    <div className="bg-surface-raised rounded-md border border-border-subtle p-4 shadow-sm text-center hover:border-accent/40 transition-colors cursor-pointer">
+                      <Avatar src={u.avatar_url} name={u.name} size="md" className="mx-auto mb-2" />
+                      <p className="font-semibold text-content-primary text-sm truncate">{u.name}</p>
+                      <p className="text-xs text-content-tertiary">@{u.username}</p>
                     </div>
-                    <div className="px-3 pb-3 -mt-7">
-                      <Link href={`/social/${m.username}`} className="block">
-                        <div className="relative w-14 h-14 mb-2">
-                          <img src={m.avatar} alt={m.name} className="w-14 h-14 rounded-full object-cover ring-2 ring-white dark:ring-[#1a1a1a]" />
-                          {m.isOnline && <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-green-500 ring-2 ring-white dark:ring-[#1a1a1a]" />}
+                  </Link>
+                ))}
+              </div>
+            )
+          )}
+
+          {activeTab === 'followers' && (
+            followersLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={24} className="animate-spin text-accent" />
+              </div>
+            ) : followers.length === 0 ? (
+              <div className="text-center py-12">
+                <Users size={28} className="mx-auto mb-2 text-content-tertiary dark:text-content-secondary" />
+                <p className="text-sm text-content-tertiary">{t('socialProfile.noFollowersYet')}</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {followers.map(u => (
+                  <Link key={u.id} href={`/social/${u.username}`}>
+                    <div className="bg-surface-raised rounded-md border border-border-subtle p-4 shadow-sm text-center hover:border-accent/40 transition-colors cursor-pointer">
+                      <Avatar src={u.avatar_url} name={u.name} size="md" className="mx-auto mb-2" />
+                      <p className="font-semibold text-content-primary text-sm truncate">{u.name}</p>
+                      <p className="text-xs text-content-tertiary">@{u.username}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )
+          )}
+
+          {activeTab === 'groups' && (
+            <div>
+              {isMine && (
+                <button onClick={() => setShowCreateGroup(true)}
+                  className="w-full flex items-center justify-center gap-2 py-3 mb-4 rounded-md border-2 border-dashed border-accent/40 text-accent text-sm font-semibold hover:bg-accent/5 transition-all">
+                  <Plus size={16} /> {t('socialProfile.createGroup')}
+                </button>
+              )}
+              {groupsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 size={24} className="animate-spin text-accent" />
+                </div>
+              ) : groups.length === 0 ? (
+                <div className="text-center py-12">
+                  <Layers size={28} className="mx-auto mb-2 text-content-tertiary dark:text-content-secondary" />
+                  <p className="text-sm text-content-tertiary">{t('socialProfile.noGroupsYet')}</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {groups.map(g => (
+                    <div key={g.id} className="bg-surface-raised rounded-md border border-border-subtle p-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="w-11 h-11 rounded-md flex items-center justify-center text-white font-bold shrink-0" style={{ backgroundColor: g.cover_color }}>
+                          {g.name.charAt(0).toUpperCase()}
                         </div>
-                        <div className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-1">{m.name}</div>
-                        <div className="text-xs text-gray-400 mb-2.5">@{m.username}</div>
-                      </Link>
-                      <div className="flex gap-1.5">
-                        <Link href={`/social/${m.username}`} className="flex-1">
-                          <button className="w-full py-1.5 rounded-xl text-xs font-semibold bg-[#F87404]/10 text-[#F87404] hover:bg-[#F87404]/20 transition-colors">
-                            Profile
-                          </button>
-                        </Link>
-                        <button
-                          onClick={() => toggleFollow(m.id)}
-                          className={`flex-1 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
-                            following
-                              ? 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/20'
-                              : 'bg-[#004AAD]/10 text-[#004AAD] hover:bg-[#004AAD]/20'
-                          }`}
-                        >
-                          {following ? 'Following' : 'Follow'}
-                        </button>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-content-primary text-sm truncate">{g.name}</p>
+                            {g.status === 'pending' && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400">{t('socialProfile.pendingApproval')}</span>
+                            )}
+                            {g.status === 'rejected' && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400">{t('socialProfile.rejected')}</span>
+                            )}
+                          </div>
+                          {g.description && <p className="text-xs text-content-secondary mt-0.5 line-clamp-2">{g.description}</p>}
+                          {g.status === 'approved' && <p className="text-xs text-content-tertiary mt-1">{g.member_count} {g.member_count !== 1 ? t('socialProfile.memberPlural') : t('socialProfile.member')}</p>}
+                          {g.status === 'rejected' && g.rejection_reason && (
+                            <p className="text-xs text-red-500 mt-1">{t('socialProfile.reason', { reason: g.rejection_reason })}</p>
+                          )}
+                        </div>
+
+                        {/* Join / Leave. The card already knew `is_member` and
+                            `is_creator` but never offered any way to act on
+                            them, so approved groups could be seen and never
+                            joined. Creators are shown a label instead — they
+                            cannot leave a group they own. */}
+                        {g.status === 'approved' && (
+                          g.is_creator ? (
+                            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-accent-surface text-accent shrink-0">
+                              {t('socialProfile.creator')}
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => toggleMembership(g)}
+                              disabled={joiningId === g.id}
+                              className={`shrink-0 text-xs font-semibold px-3.5 py-1.5 rounded-full transition-colors disabled:opacity-60 ${
+                                g.is_member
+                                  ? 'bg-surface-sunken text-content-secondary hover:bg-surface-sunken/70'
+                                  : 'bg-accent text-white hover:bg-accent-hover'
+                              }`}
+                            >
+                              {joiningId === g.id ? '…' : g.is_member ? t('socialProfile.leave') : t('socialProfile.join')}
+                            </button>
+                          )
+                        )}
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Create Group modal */}
+      {showCreateGroup && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCreateGroup(false)} />
+          <div className="relative w-full max-w-sm bg-surface-raised rounded-md z-10 overflow-hidden">
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border-subtle">
+              <h3 className="font-bold text-content-primary">{t('socialProfile.createGroup')}</h3>
+              <button onClick={() => setShowCreateGroup(false)} className="w-8 h-8 rounded-md flex items-center justify-center text-content-tertiary hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <div className="flex items-start gap-2.5 p-3 bg-blue-50 dark:bg-[#004AAD]/10 rounded-md border border-blue-200 dark:border-[#004AAD]/20">
+                <p className="text-xs text-brand-blue-deep dark:text-blue-300 leading-relaxed">
+                  {t('socialProfile.groupApprovalNotice')}
+                </p>
+              </div>
+              <input value={newGroupName} onChange={e => setNewGroupName(e.target.value)}
+                placeholder={t('socialProfile.groupNamePlaceholder')} maxLength={100}
+                className="w-full px-4 py-3 rounded-md border border-border-strong bg-surface-sunken text-sm text-content-primary placeholder:text-content-tertiary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" />
+              <textarea value={newGroupDesc} onChange={e => setNewGroupDesc(e.target.value)}
+                placeholder={t('socialProfile.groupDescPlaceholder')} rows={3} maxLength={500}
+                className="w-full px-4 py-3 rounded-md border border-border-strong bg-surface-sunken text-sm text-content-primary placeholder:text-content-tertiary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 resize-none" />
+            </div>
+            <div className="flex gap-3 px-5 pb-5">
+              <button onClick={() => setShowCreateGroup(false)}
+                className="flex-1 py-3 rounded-md border border-border-strong text-sm font-medium text-content-secondary hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                {t('goals.modal.cancel')}
+              </button>
+              <button onClick={createGroup} disabled={creatingGroup}
+                className="flex-1 py-3 rounded-md bg-accent text-white text-sm font-semibold hover:bg-[#FF5C04] transition-colors shadow-orange-500/25 flex items-center justify-center gap-2 disabled:opacity-70">
+                {creatingGroup ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                {t('socialProfile.submitForApproval')}
+              </button>
             </div>
           </div>
-        )}
-
-        {/* FOLLOWERS TAB */}
-        {activeTab === 'followers' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
-            {mockMembers.map(m => {
-              const followed = isFollowing(m.id);
-              return (
-                <div key={m.id} className="flex items-center gap-3 p-3.5 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] shadow-sm">
-                  <Link href={`/social/${m.username}`}>
-                    <img src={m.avatar} alt={m.name} className="w-12 h-12 rounded-full object-cover shrink-0 hover:scale-105 transition-transform" />
-                  </Link>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{m.name}</div>
-                    <div className="text-xs text-gray-400 truncate">@{m.username}</div>
-                    <div className="text-[10px] text-gray-400 mt-0.5">{m.followers.toLocaleString()} followers</div>
-                  </div>
-                  <button
-                    onClick={() => toggleFollow(m.id)}
-                    className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap ${
-                      followed
-                        ? 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10'
-                        : 'bg-[#F87404]/10 text-[#F87404] hover:bg-[#F87404]/20'
-                    }`}
-                  >
-                    {followed ? 'Following' : 'Follow back'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* GROUPS TAB */}
-        {activeTab === 'groups' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
-            {[
-              { name: 'Team Extreme Athletes', members: 248, img: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=400&h=200&fit=crop', tag: 'Fitness' },
-              { name: 'Nutrition & Meal Prep', members: 183, img: 'https://images.unsplash.com/photo-1547592180-85f173990554?w=400&h=200&fit=crop', tag: 'Nutrition' },
-              { name: 'Morning Warriors 5AM Club', members: 92, img: 'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=400&h=200&fit=crop', tag: 'Lifestyle' },
-              { name: 'Transformation Stories', members: 317, img: 'https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=400&h=200&fit=crop', tag: 'Motivation' },
-            ].map(group => (
-              <div key={group.name} className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-gray-100 dark:border-white/[0.07] overflow-hidden shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer">
-                <div className="h-28 overflow-hidden">
-                  <img src={group.img} alt={group.name} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
-                </div>
-                <div className="p-4">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <h4 className="font-semibold text-sm text-gray-900 dark:text-white leading-tight">{group.name}</h4>
-                    <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-[#F87404]/10 text-[#F87404] font-medium">{group.tag}</span>
-                  </div>
-                  <div className="text-xs text-gray-400 mb-3 flex items-center gap-1">
-                    <Users size={11} />
-                    {group.members} members
-                  </div>
-                  <button className="w-full py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-[#F87404] to-[#FF5C04] text-white hover:opacity-90 transition-opacity">
-                    View Group
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="h-24" />
-      </div>
+        </div>
+      )}
     </DashboardShell>
   );
 }

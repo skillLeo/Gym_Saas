@@ -1,18 +1,32 @@
 import { cn } from '@/lib/utils';
+import { Loader2 } from 'lucide-react';
 
-export function LoadingSpinner({ className, size = 'md' }: { className?: string; size?: 'sm' | 'md' | 'lg' }) {
-  const sizes = { sm: 'h-4 w-4', md: 'h-8 w-8', lg: 'h-12 w-12' };
+/**
+ * Prefer <Skeleton /> for content that is loading — a shape-matched skeleton
+ * reads as progress, a bare spinner reads as a stall (§2.2). Reserve this for
+ * indeterminate inline waits (a button, a small poll).
+ */
+export function LoadingSpinner({
+  className,
+  size = 'md',
+}: {
+  className?: string;
+  size?: 'sm' | 'md' | 'lg';
+}) {
+  const px = { sm: 16, md: 28, lg: 40 }[size];
   return (
-    <svg className={cn('animate-spin text-[#F87404]', sizes[size], className)} viewBox="0 0 24 24" fill="none">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-    </svg>
+    <Loader2
+      size={px}
+      strokeWidth={2}
+      className={cn('animate-spin text-accent', className)}
+      aria-label="Loading"
+    />
   );
 }
 
 export function PageLoader() {
   return (
-    <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center">
+    <div className="min-h-screen bg-surface-base flex items-center justify-center">
       <LoadingSpinner size="lg" />
     </div>
   );

@@ -1,35 +1,114 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState, useRef, useEffect } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { ChevronLeft, Plus, Trash2, Image, CheckCircle, ChefHat } from 'lucide-react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Plus, Trash2, CheckCircle, ChefHat, Loader2, ImageIcon, X, Lock } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import api from '@/lib/api';
+import toast from 'react-hot-toast';
+import { getErrorMessage } from '@/lib/errors';
+import { useI18nStore } from '@/store/i18nStore';
 
 type Ingredient = { id: string; name: string; amount: string; unit: string };
 
-export default function CreateRecipePage() {
+const CATEGORIES = ['Breakfast', 'Lunch', 'Dinner', 'Snacks', 'Smoothies'];
+const ALL_TAGS   = ['High Protein', 'Low Carb', 'Quick', 'Meal Prep', 'Vegetarian', 'Vegan', 'Gluten-Free'];
+
+const CATEGORY_KEYS: Record<string, string> = {
+  Breakfast: 'recipeCreate.category.breakfast', Lunch: 'recipeCreate.category.lunch',
+  Dinner: 'recipeCreate.category.dinner', Snacks: 'recipeCreate.category.snacks',
+  Smoothies: 'recipeCreate.category.smoothies',
+};
+const DIFFICULTY_KEYS: Record<string, string> = {
+  Easy: 'recipeCreate.difficultyLevel.easy', Medium: 'recipeCreate.difficultyLevel.medium',
+  Hard: 'recipeCreate.difficultyLevel.hard',
+};
+const TAG_KEYS: Record<string, string> = {
+  'High Protein': 'recipeCreate.tag.highProtein', 'Low Carb': 'recipeCreate.tag.lowCarb',
+  Quick: 'recipeCreate.tag.quick', 'Meal Prep': 'recipeCreate.tag.mealPrep',
+  Vegetarian: 'recipeCreate.tag.vegetarian', Vegan: 'recipeCreate.tag.vegan',
+  'Gluten-Free': 'recipeCreate.tag.glutenFree',
+};
+
+function CreateRecipeForm() {
   const router = useRouter();
+  const { t } = useI18nStore();
+  // The same screen doubles as the editor. Members could create a recipe and
+  // then never change it — there was no member-facing update route at all, only
+  // the admin pair — so a typo in a recipe was permanent.
+  const searchParams = useSearchParams();
+  const editId  = searchParams?.get('edit') ?? null;
+  const isEdit  = Boolean(editId);
+  const [loadingRecipe, setLoadingRecipe] = useState(isEdit);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saved,  setSaved]  = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
-    name: '', category: 'Breakfast', description: '', prepTime: '', cookTime: '', servings: '4',
+    name: '', category: 'Breakfast', difficulty: 'Easy', description: '',
+    prepTime: '', cookTime: '', servings: '1',
     calories: '', protein: '', carbs: '', fat: '',
     tags: [] as string[],
+    is_public: true
   });
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('folder', 'recipes');
+      const res = await api.post('/uploads/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setImageUrl(res.data.image_url);
+    } catch {
+      toast.error(t('recipeCreate.toast.uploadFailed'));
+    } finally {
+      setUploadingImage(false);
+      if (imageInputRef.current) imageInputRef.current.value = '';
+    }
+  };
   const [ingredients, setIngredients] = useState<Ingredient[]>([
     { id: '1', name: '', amount: '', unit: 'cup' }
   ]);
   const [instructions, setInstructions] = useState(['']);
 
-  const addIngredient = () => setIngredients(p => [...p, { id: Date.now().toString(), name: '', amount: '', unit: 'cup' }]);
+  const addIngredient  = () => setIngredients(p => [...p, { id: Date.now().toString(), name: '', amount: '', unit: 'cup' }]);
   const removeIngredient = (id: string) => setIngredients(p => p.filter(i => i.id !== id));
   const updateIngredient = (id: string, field: keyof Ingredient, value: string) =>
     setIngredients(p => p.map(i => i.id === id ? { ...i, [field]: value } : i));
 
-  const addStep = () => setInstructions(p => [...p, '']);
+  useEffect(() => {
+    if (!editId) return;
+    api.get(`/recipes/${editId}`)
+      .then(res => {
+        const r = res.data.data;
+        setForm({
+          name: r.name ?? '', category: r.category ?? 'Breakfast',
+          difficulty: r.difficulty ?? 'Easy', description: r.description ?? '',
+          prepTime: String(r.prep_time ?? ''), cookTime: String(r.cook_time ?? ''),
+          servings: String(r.servings ?? '1'),
+          calories: String(r.calories ?? ''), protein: String(r.protein ?? ''),
+          carbs: String(r.carbs ?? ''), fat: String(r.fat ?? ''),
+          tags: r.tags ?? [], is_public: r.is_public ?? true,
+        });
+        setImageUrl(r.image_url ?? null);
+        if (r.ingredients?.length) {
+          setIngredients(r.ingredients.map((i: { name?: string; amount?: string; unit?: string }, idx: number) => ({
+            id: String(idx), name: i.name ?? '', amount: i.amount ?? '', unit: i.unit ?? '',
+          })));
+        }
+        if (r.instructions?.length) setInstructions(r.instructions);
+      })
+      .catch(() => toast.error(t('recipeCreate.toast.saveFailed')))
+      .finally(() => setLoadingRecipe(false));
+  }, [editId, t]);
+
+  const addStep    = () => setInstructions(p => [...p, '']);
   const removeStep = (idx: number) => setInstructions(p => p.filter((_, i) => i !== idx));
   const updateStep = (idx: number, value: string) => setInstructions(p => p.map((s, i) => i === idx ? value : s));
 
@@ -38,187 +117,279 @@ export default function CreateRecipePage() {
   }));
 
   const handleSave = async () => {
+    if (!form.name.trim()) { toast.error(t('recipeCreate.toast.nameRequired')); return; }
     setSaving(true);
-    await new Promise(r => setTimeout(r, 1200));
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => router.push('/recipes'), 1500);
+    try {
+      const payload = {
+        name:         form.name.trim(),
+        image_url:    imageUrl,
+        category:     form.category,
+        difficulty:   form.difficulty,
+        description:  form.description.trim() || null,
+        prep_time:    parseInt(form.prepTime) || 0,
+        cook_time:    parseInt(form.cookTime) || 0,
+        servings:     parseInt(form.servings) || 1,
+        calories:     parseInt(form.calories) || 0,
+        protein:      parseFloat(form.protein) || 0,
+        carbs:        parseFloat(form.carbs) || 0,
+        fat:          parseFloat(form.fat) || 0,
+        tags:         form.tags,
+        ingredients:  ingredients.filter(i => i.name.trim()),
+        instructions: instructions.filter(s => s.trim()),
+        is_public:    form.is_public
+      };
+      if (isEdit) await api.put(`/recipes/${editId}`, payload);
+      else        await api.post('/recipes', payload);
+      setSaved(true);
+      toast.success(isEdit ? 'Recipe updated!' : t('recipeCreate.toast.created'));
+      setTimeout(() => router.push('/recipes'), 1200);
+    } catch (err) {
+      toast.error(getErrorMessage(err, t('recipeCreate.toast.saveFailed')));
+    } finally {
+      setSaving(false);
+    }
   };
-
-  const allTags = ['High Protein', 'Low Carb', 'Quick', 'Meal Prep', 'Vegetarian', 'Vegan', 'Gluten-Free'];
 
   return (
     <DashboardShell>
       <div className="max-w-2xl mx-auto px-4 py-6">
 
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/recipes">
-            <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/[0.07] hover:border-[#F87404]/40 transition-colors">
-              <ChevronLeft size={18} className="text-gray-600 dark:text-gray-400" />
-            </button>
-          </Link>
-          <div>
-            <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-white">Create Recipe</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Share your healthy creation</p>
-          </div>
-        </div>
+        <PageHeader
+        title={isEdit ? 'Edit Recipe' : t('recipeCreate.title')}
+        subtitle={isEdit ? 'Change anything and save' : t('recipeCreate.subtitle')}
+        back="/recipes"
+      />
 
         {saved && (
-          <div className="flex items-center gap-3 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 rounded-2xl p-4 mb-5">
+          <div className="flex items-center gap-3 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 rounded-md p-4 mb-5">
             <CheckCircle size={18} className="text-green-500" />
-            <span className="text-sm font-medium text-green-700 dark:text-green-400">Recipe saved! Redirecting...</span>
+            <span className="text-sm font-medium text-green-700 dark:text-green-400">{t('recipeCreate.saved')}</span>
           </div>
         )}
 
-        {/* Photo Upload */}
-        <div className="h-40 bg-gray-100 dark:bg-white/[0.05] rounded-3xl border-2 border-dashed border-gray-300 dark:border-white/10 flex flex-col items-center justify-center mb-5 cursor-pointer hover:border-[#F87404]/50 transition-all">
-          <Image size={28} className="text-gray-300 dark:text-gray-600 mb-2" />
-          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Add recipe photo</p>
-          <p className="text-xs text-gray-400">Tap to upload</p>
-        </div>
+        {/* Photo upload */}
+        <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} disabled={uploadingImage} />
+        {imageUrl ? (
+          <div className="relative h-40 rounded-md overflow-hidden mb-5 group">
+            <img src={imageUrl} alt="Recipe" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+              <button onClick={() => imageInputRef.current?.click()}
+                className="px-3 py-1.5 bg-white/90 rounded-lg text-xs font-semibold text-content-primary hover:bg-white transition-colors">{t('recipeCreate.photo.change')}</button>
+              <button onClick={() => setImageUrl(null)}
+                className="w-8 h-8 rounded-lg bg-white/90 hover:bg-white flex items-center justify-center transition-colors">
+                <X size={14} className="text-content-primary" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={() => imageInputRef.current?.click()} disabled={uploadingImage}
+            className="w-full h-40 bg-surface-sunken rounded-md border-2 border-dashed border-gray-300 dark:border-white/10 flex flex-col items-center justify-center mb-5 cursor-pointer hover:border-accent/50 transition-all disabled:opacity-60">
+            {uploadingImage ? (
+              <Loader2 size={28} className="text-accent animate-spin mb-2" />
+            ) : (
+              <ImageIcon size={28} className="text-content-tertiary dark:text-content-secondary mb-2" />
+            )}
+            <p className="text-sm font-medium text-content-secondary">{uploadingImage ? t('recipeCreate.photo.uploading') : t('recipeCreate.photo.add')}</p>
+            <p className="text-xs text-content-tertiary">{t('recipeCreate.photo.tap')}</p>
+          </button>
+        )}
 
         {/* Basic Info */}
         <Card className="mb-5">
           <div className="p-5 space-y-4">
-            <h3 className="font-semibold text-gray-900 dark:text-white text-sm flex items-center gap-2"><ChefHat size={16} className="text-[#F87404]" /> Basic Info</h3>
+            <h3 className="font-semibold text-content-primary text-sm flex items-center gap-2"><ChefHat size={16} className="text-accent" /> {t('recipeCreate.basicInfo')}</h3>
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">Recipe Name</label>
+              <label className="text-sm font-medium text-content-secondary mb-1.5 block">{t('recipeCreate.name')}</label>
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                placeholder="e.g., High-Protein Chicken Bowl"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#F87404]/50" />
+                placeholder={t('recipeCreate.namePlaceholder')}
+                className="w-full px-4 py-3 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">Description</label>
+              <label className="text-sm font-medium text-content-secondary mb-1.5 block">{t('recipeCreate.description')}</label>
               <textarea rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                placeholder="Brief description of the recipe..."
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#F87404]/50 resize-none" />
+                placeholder={t('recipeCreate.descriptionPlaceholder')}
+                className="w-full px-4 py-3 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 resize-none" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">Category</label>
+                <label className="text-sm font-medium text-content-secondary mb-1.5 block">{t('recipeCreate.category')}</label>
                 <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#F87404]/50">
-                  {['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Dessert'].map(c => <option key={c} value={c}>{c}</option>)}
+                  className="w-full px-4 py-3 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40">
+                  {CATEGORIES.map(c => <option key={c} value={c}>{t(CATEGORY_KEYS[c])}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">Servings</label>
-                <input type="number" value={form.servings} onChange={e => setForm(f => ({ ...f, servings: e.target.value }))}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#F87404]/50" />
+                <label className="text-sm font-medium text-content-secondary mb-1.5 block">{t('recipeCreate.servings')}</label>
+                <input type="number" min={1} max={100} value={form.servings}
+                  onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d*$/.test(v)) setForm(f => ({ ...f, servings: v })); }}
+                  onKeyDown={e => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                  className="w-full px-4 py-3 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-content-secondary mb-1.5 block">{t('recipeCreate.difficulty')}</label>
+              <div className="grid grid-cols-3 gap-2">
+                {['Easy', 'Medium', 'Hard'].map(d => (
+                  <button key={d} type="button" onClick={() => setForm(f => ({ ...f, difficulty: d }))}
+                    className={`py-2.5 rounded-md text-sm font-medium border-2 transition-all ${form.difficulty === d ? 'border-accent bg-accent-surface text-accent' : 'border-border-strong text-content-secondary'}`}>
+                    {t(DIFFICULTY_KEYS[d])}
+                  </button>
+                ))}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">Prep Time (min)</label>
-                <input type="number" value={form.prepTime} onChange={e => setForm(f => ({ ...f, prepTime: e.target.value }))}
+                <label className="text-sm font-medium text-content-secondary mb-1.5 block">{t('recipeCreate.prepTime')}</label>
+                <input type="number" min={0} max={1440} value={form.prepTime}
+                  onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d*$/.test(v)) setForm(f => ({ ...f, prepTime: v })); }}
+                  onKeyDown={e => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
                   placeholder="15"
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#F87404]/50" />
+                  className="w-full px-4 py-3 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" />
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">Cook Time (min)</label>
-                <input type="number" value={form.cookTime} onChange={e => setForm(f => ({ ...f, cookTime: e.target.value }))}
-                  placeholder="25"
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#F87404]/50" />
+                <label className="text-sm font-medium text-content-secondary mb-1.5 block">{t('recipeCreate.cookTime')}</label>
+                <input type="number" min={0} max={1440} value={form.cookTime}
+                  onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d*$/.test(v)) setForm(f => ({ ...f, cookTime: v })); }}
+                  onKeyDown={e => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                  placeholder="30"
+                  className="w-full px-4 py-3 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" />
               </div>
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Tags</label>
-              <div className="flex flex-wrap gap-2">
-                {allTags.map(tag => (
-                  <button key={tag} onClick={() => toggleTag(tag)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${form.tags.includes(tag) ? 'bg-[#F87404] text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400'}`}>
-                    {tag}
-                  </button>
-                ))}
-              </div>
+          </div>
+        </Card>
+
+        {/* Nutrition */}
+        <Card className="mb-5">
+          <div className="p-5 space-y-4">
+            <h3 className="font-semibold text-content-primary text-sm">{t('recipeCreate.nutrition')}</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                ['calories', 'recipeCreate.field.calories', 9999],
+                ['protein',  'recipeCreate.field.protein', 999],
+                ['carbs',    'recipeCreate.field.carbs', 999],
+                ['fat',      'recipeCreate.field.fat', 999],
+              ] as const).map(([field, labelKey, max]) => (
+                <div key={field}>
+                  <label className="text-xs font-medium text-content-secondary mb-1 block">{t(labelKey)}</label>
+                  <input type="number" min={0} max={max} value={(form as any)[field]}
+                    onChange={e => { const v = e.target.value; if (v === '' || /^\d*\.?\d*$/.test(v)) setForm(f => ({ ...f, [field]: v })); }}
+                    onKeyDown={e => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
+                    placeholder="0"
+                    className="w-full px-3 py-2.5 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        {/* Tags */}
+        <Card className="mb-5">
+          <div className="p-5">
+            <h3 className="font-semibold text-content-primary text-sm mb-3">{t('recipeCreate.tags')}</h3>
+            <div className="flex flex-wrap gap-2">
+              {ALL_TAGS.map(tag => (
+                <button key={tag} onClick={() => toggleTag(tag)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${form.tags.includes(tag) ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-white/[0.07] text-content-secondary hover:bg-gray-200 dark:hover:bg-white/[0.12]'}`}>
+                  {t(TAG_KEYS[tag])}
+                </button>
+              ))}
             </div>
           </div>
         </Card>
 
         {/* Ingredients */}
         <Card className="mb-5">
-          <div className="p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Ingredients</h3>
-              <button onClick={addIngredient} className="text-xs text-[#F87404] font-medium hover:underline flex items-center gap-1">
-                <Plus size={13} /> Add
-              </button>
-            </div>
-            <div className="space-y-2">
-              {ingredients.map((ing) => (
-                <div key={ing.id} className="grid grid-cols-12 gap-2">
+          <div className="p-5 space-y-3">
+            <h3 className="font-semibold text-content-primary text-sm">{t('recipeCreate.ingredients')}</h3>
+            {ingredients.map((ing, idx) => (
+              <div key={ing.id} className="flex flex-col sm:flex-row gap-2">
+                <input value={ing.name} onChange={e => updateIngredient(ing.id, 'name', e.target.value)}
+                  placeholder={t('recipeCreate.ingredientName')}
+                  className="w-full sm:flex-1 sm:min-w-0 px-3 py-2.5 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" />
+                <div className="flex gap-2">
                   <input value={ing.amount} onChange={e => updateIngredient(ing.id, 'amount', e.target.value)}
-                    placeholder="1" className="col-span-2 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#F87404]/40" />
-                  <select value={ing.unit} onChange={e => updateIngredient(ing.id, 'unit', e.target.value)}
-                    className="col-span-3 px-2 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-[#F87404]/40">
-                    {['cup', 'tbsp', 'tsp', 'oz', 'g', 'lb', 'piece', 'clove'].map(u => <option key={u}>{u}</option>)}
-                  </select>
-                  <input value={ing.name} onChange={e => updateIngredient(ing.id, 'name', e.target.value)}
-                    placeholder="Ingredient" className="col-span-6 px-3 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#F87404]/40" />
-                  <button onClick={() => removeIngredient(ing.id)} className="col-span-1 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors">
-                    <Trash2 size={14} />
-                  </button>
+                    placeholder={t('recipeCreate.amount')}
+                    className="flex-1 min-w-0 sm:flex-none sm:w-20 px-3 py-2.5 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" />
+                  <input value={ing.unit} onChange={e => updateIngredient(ing.id, 'unit', e.target.value)}
+                    placeholder={t('recipeCreate.unit')}
+                    className="flex-1 min-w-0 sm:flex-none sm:w-16 px-3 py-2.5 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" />
+                  {ingredients.length > 1 && (
+                    <button onClick={() => removeIngredient(ing.id)} className="shrink-0 p-2 text-content-tertiary hover:text-red-500 transition-colors">
+                      <Trash2 size={15} />
+                    </button>
+                  )}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
+            <button onClick={addIngredient}
+              className="flex items-center gap-2 text-sm text-accent font-semibold hover:text-accent-hover transition-colors">
+              <Plus size={16} /> {t('recipeCreate.addIngredient')}
+            </button>
           </div>
         </Card>
 
         {/* Instructions */}
         <Card className="mb-5">
-          <div className="p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Instructions</h3>
-              <button onClick={addStep} className="text-xs text-[#F87404] font-medium hover:underline flex items-center gap-1">
-                <Plus size={13} /> Add Step
-              </button>
-            </div>
-            <div className="space-y-3">
-              {instructions.map((step, idx) => (
-                <div key={idx} className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-[#F87404]/10 text-[#F87404] flex items-center justify-center text-xs font-bold shrink-0 mt-2">{idx + 1}</div>
-                  <textarea rows={2} value={step} onChange={e => updateStep(idx, e.target.value)}
-                    placeholder={`Step ${idx + 1}...`}
-                    className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#F87404]/40 resize-none" />
-                  {instructions.length > 1 && (
-                    <button onClick={() => removeStep(idx)} className="text-gray-400 hover:text-red-500 transition-colors mt-3">
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
+          <div className="p-5 space-y-3">
+            <h3 className="font-semibold text-content-primary text-sm">{t('recipeCreate.instructions')}</h3>
+            {instructions.map((step, idx) => (
+              <div key={idx} className="flex gap-3 items-start">
+                <span className="w-7 h-7 rounded-full bg-accent-surface text-accent font-bold text-xs flex items-center justify-center flex-shrink-0 mt-2">{idx + 1}</span>
+                <textarea value={step} onChange={e => updateStep(idx, e.target.value)}
+                  rows={2} placeholder={t('recipeCreate.step', { n: idx + 1 })}
+                  className="flex-1 px-3 py-2.5 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 resize-none" />
+                {instructions.length > 1 && (
+                  <button onClick={() => removeStep(idx)} className="p-2 text-content-tertiary hover:text-red-500 transition-colors mt-1">
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button onClick={addStep}
+              className="flex items-center gap-2 text-sm text-accent font-semibold hover:text-accent-hover transition-colors">
+              <Plus size={16} /> {t('recipeCreate.addStep')}
+            </button>
+          </div>
+        </Card>
+
+        {/* Visibility is no longer the author's to set. There used to be a
+            public/private switch here, defaulting to public, so a recipe went in
+            front of every member the moment it was saved. Saying plainly what
+            happens beats a toggle that no longer decides anything. */}
+        <Card className="mb-5">
+          <div className="p-5 flex items-start gap-3">
+            <Lock size={16} className="text-content-tertiary shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-content-primary">Private to you</p>
+              <p className="text-xs text-content-tertiary mt-0.5">
+                Only you can see this recipe. Once saved you can send it for review, and
+                it joins the shared library if it is approved.
+              </p>
             </div>
           </div>
         </Card>
 
-        {/* Nutrition */}
-        <Card className="mb-6">
-          <div className="p-5">
-            <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4">Nutrition (per serving)</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { key: 'calories', label: 'Calories', placeholder: '450' },
-                { key: 'protein', label: 'Protein (g)', placeholder: '35' },
-                { key: 'carbs', label: 'Carbs (g)', placeholder: '40' },
-                { key: 'fat', label: 'Fat (g)', placeholder: '12' },
-              ].map(({ key, label, placeholder }) => (
-                <div key={key}>
-                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5 block">{label}</label>
-                  <input type="number" value={(form as any)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                    placeholder={placeholder}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[#F87404]/50" />
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
+        <button onClick={handleSave} disabled={saving || saved}
+          className="w-full bg-accent hover:bg-accent-hover disabled:opacity-60 text-white font-bold py-4 rounded-md text-sm transition-all flex items-center justify-center gap-2">
+          {saving ? <Loader2 size={18} className="animate-spin" /> : <ChefHat size={18} />}
+          {saving ? t('recipeCreate.saving') : t('recipeCreate.save')}
+        </button>
 
-        <Button onClick={handleSave} fullWidth size="lg" loading={saving} icon={<CheckCircle size={18} />}>
-          {saving ? 'Saving...' : 'Publish Recipe'}
-        </Button>
-
-        <div className="h-24" />
+        <div className="h-10" />
       </div>
     </DashboardShell>
+  );
+}
+
+/**
+ * Same prerender bail-out as /auth/login: useSearchParams() (used here to
+ * preload a recipe for editing) must sit inside a Suspense boundary or
+ * 'next build' aborts on this route.
+ */
+export default function CreateRecipePage() {
+  return (
+    <Suspense fallback={null}>
+      <CreateRecipeForm />
+    </Suspense>
   );
 }

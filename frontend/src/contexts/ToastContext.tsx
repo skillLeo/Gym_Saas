@@ -21,14 +21,14 @@ const icons = {
   success: CheckCircle,
   error: XCircle,
   info: Info,
-  warning: AlertTriangle,
+  warning: AlertTriangle
 };
 
 const colors = {
   success: 'bg-green-500',
   error: 'bg-red-500',
   info: 'bg-blue-500',
-  warning: 'bg-yellow-500',
+  warning: 'bg-yellow-500'
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -53,7 +53,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           return (
             <div
               key={toast.id}
-              className="animate-slide-in-right pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-3 text-white shadow-xl min-w-[280px] max-w-[360px]"
+              className="animate-slide-in-right pointer-events-auto flex items-center gap-3 rounded-md px-4 py-3 text-white min-w-[280px] max-w-[360px]"
               style={{ background: toast.type === 'success' ? '#F87404' : toast.type === 'error' ? '#FF0404' : toast.type === 'warning' ? '#FFC000' : '#004AAD' }}
             >
               <Icon size={18} className="shrink-0" />

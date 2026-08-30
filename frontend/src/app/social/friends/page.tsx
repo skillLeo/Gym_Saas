@@ -1,167 +1,178 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useI18nStore } from '@/store/i18nStore';
 import Link from 'next/link';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { Avatar } from '@/components/ui/Avatar';
-import { mockMembers } from '@/lib/mockData';
-import { Users, UserPlus, Search, X, MessageCircle, UserCheck } from 'lucide-react';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Users, UserPlus, Search, X, MessageCircle, UserCheck, Loader2 } from 'lucide-react';
+import api from '@/lib/api';
 import toast from 'react-hot-toast';
 
+interface SocialUser {
+  id: number; name: string; username: string; avatar_url: string;
+  bio: string | null; primary_goal: string | null;
+  is_following: boolean; followers_count: number; following_count: number;
+}
+
 export default function FriendsPage() {
+  const { t } = useI18nStore();
+  const [tab, setTab] = useState<'following' | 'followers'>('following');
   const [search, setSearch] = useState('');
-  const [followed, setFollowed] = useState<Set<string>>(new Set(['2', '3']));
+  const [following, setFollowing] = useState<SocialUser[]>([]);
+  const [followers, setFollowers] = useState<SocialUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
 
-  const q = search.toLowerCase().trim();
-  const filtered = q
-    ? mockMembers.filter(m => m.name.toLowerCase().includes(q) || m.username.toLowerCase().includes(q))
-    : mockMembers;
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [f1, f2] = await Promise.all([
+          api.get('/social/following'),
+          api.get('/social/followers'),
+        ]);
+        setFollowing(f1.data.data ?? []);
+        setFollowers(f2.data.data ?? []);
+      } catch {
+        toast.error(t('friends.error.load'));
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
 
-  const toggleFollow = (id: string, name: string) => {
-    setFollowed(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) { next.delete(id); toast.success(`Unfollowed ${name}`); }
-      else { next.add(id); toast.success(`Following ${name}!`); }
-      return next;
-    });
+  const toggleFollow = async (user: SocialUser) => {
+    setTogglingId(user.id);
+    try {
+      const res = await api.post(`/social/follow/${user.id}`);
+      const action = res.data.action;
+      if (action === 'unfollowed') {
+        setFollowing(prev => prev.filter(u => u.id !== user.id));
+        toast.success(`Unfollowed ${user.name}`);
+      } else {
+        setFollowing(prev => [...prev, { ...user, is_following: true }]);
+        setFollowers(prev => prev.map(u => u.id === user.id ? { ...u, is_following: true } : u));
+        toast.success(t('social.toast.followingName', { name: user.name }));
+      }
+    } catch {
+      toast.error(t('common.failed'));
+    } finally {
+      setTogglingId(null);
+    }
   };
 
-  const friends = mockMembers.filter(m => followed.has(m.id));
-  const suggestions = mockMembers.filter(m => !followed.has(m.id));
+  const q = search.toLowerCase().trim();
+  const displayed = (tab === 'following' ? following : followers).filter(u =>
+    !q || u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q)
+  );
 
   return (
     <DashboardShell>
-      <div className="max-w-3xl mx-auto space-y-6 pb-8">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Users size={24} className="text-[#F87404]" /> Friends
-            </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              {friends.length} following · {mockMembers.length} members in your community
-            </p>
-          </div>
-          <Link href="/social"
-            className="flex items-center gap-2 text-sm font-semibold text-[#F87404] hover:underline">
-            ← Back to Feed
-          </Link>
+      <div className="max-w-3xl mx-auto space-y-6 pb-8 px-4 py-6">
+        {/* `title` is a string prop. It previously held a template literal
+            containing JSX source, so the header rendered the literal characters
+            `<Users size=24 className="text-accent" /> Friends` on screen. */}
+        <PageHeader
+        title={t('friends.title')}
+        subtitle={t('friends.subtitle', { following: following.length, followers: followers.length })}
+        actions={
+          <Link href="/social" className="flex items-center gap-2 text-sm font-semibold text-accent hover:underline">
+              {t('social.backToFeed')}
+            </Link>
+        }
+      />
+
+        {/* Tabs */}
+        <div className="flex gap-2">
+          {(['following', 'followers'] as const).map(tabKey => (
+            <button key={tabKey} onClick={() => setTab(tabKey)}
+              className={`px-5 py-2 rounded-full text-sm font-semibold capitalize transition-all ${tab === tabKey ? 'bg-accent text-white' : 'bg-surface-raised border border-border-strong text-content-secondary'}`}>
+              {tabKey === 'following' ? `${t('social.following')} (${following.length})` : `${t('social.followers')} (${followers.length})`}
+            </button>
+          ))}
         </div>
 
         {/* Search */}
         <div className="relative">
-          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search members by name or username..."
-            className="w-full pl-11 pr-10 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-white/10 rounded-2xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 outline-none focus:border-[#F87404] transition-colors"
-          />
+          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-content-tertiary pointer-events-none" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder={t('friends.search')}
+            className="w-full pl-11 pr-10 py-3 bg-surface-raised border border-border-strong rounded-md text-sm text-content-primary placeholder:text-content-tertiary outline-none focus-visible:border-accent transition-colors" />
           {search && (
-            <button onClick={() => setSearch('')}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
-              <X size={14} />
+            <button onClick={() => setSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-content-tertiary hover:text-content-secondary">
+              <X size={15} />
             </button>
           )}
         </div>
 
-        {search ? (
-          /* Search results */
-          <div className="bg-white dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100 dark:border-white/10">
-              <p className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
-                {filtered.length} result{filtered.length !== 1 ? 's' : ''}
-              </p>
-            </div>
-            {filtered.length === 0 ? (
-              <div className="py-12 text-center">
-                <Users size={40} className="mx-auto text-gray-200 dark:text-gray-700 mb-3" />
-                <p className="text-sm text-gray-500 dark:text-gray-400">No members found</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-50 dark:divide-white/5">
-                {filtered.map(member => (
-                  <MemberRow key={member.id} member={member} isFollowing={followed.has(member.id)} onToggle={toggleFollow} />
-                ))}
-              </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 size={28} className="animate-spin text-accent" />
+          </div>
+        ) : displayed.length === 0 ? (
+          <div className="text-center py-16">
+            <Users size={32} className="mx-auto mb-2 text-content-tertiary dark:text-content-secondary" />
+            <p className="text-sm text-content-tertiary">
+              {q ? t('friends.noResults') : tab === 'following' ? t('friends.notFollowing') : t('friends.noFollowers')}
+            </p>
+            {!q && (
+              <Link href="/social/explore">
+                <button className="mt-3 text-xs font-semibold text-accent hover:underline">{t('friends.explore')}</button>
+              </Link>
             )}
           </div>
         ) : (
-          <>
-            {/* Following */}
-            {friends.length > 0 && (
-              <section>
-                <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <UserCheck size={14} className="text-[#F87404]" /> Following ({friends.length})
-                </h2>
-                <div className="bg-white dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
-                  <div className="divide-y divide-gray-50 dark:divide-white/5">
-                    {friends.map(member => (
-                      <MemberRow key={member.id} member={member} isFollowing={true} onToggle={toggleFollow} />
-                    ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {displayed.map(u => (
+              <div key={u.id} className="bg-surface-raised rounded-md border border-border-subtle shadow-sm p-4">
+                <div className="flex items-start gap-3">
+                  <Link href={`/social/${u.username}`}>
+                    <Avatar src={u.avatar_url} name={u.name} size="md" />
+                  </Link>
+                  <div className="flex-1 min-w-0">
+                    <Link href={`/social/${u.username}`}>
+                      <p className="font-semibold text-content-primary text-sm truncate hover:text-accent transition-colors">{u.name}</p>
+                    </Link>
+                    <p className="text-xs text-content-tertiary">@{u.username}</p>
+                    {u.bio && <p className="text-xs text-content-secondary mt-1 line-clamp-2">{u.bio}</p>}
+                    <div className="flex items-center gap-3 mt-2 text-xs text-content-tertiary">
+                      <span>{u.followers_count} followers</span>
+                      <span>{u.following_count} following</span>
+                    </div>
                   </div>
                 </div>
-              </section>
-            )}
-
-            {/* Suggestions */}
-            {suggestions.length > 0 && (
-              <section>
-                <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                  <UserPlus size={14} className="text-[#F87404]" /> People You May Know
-                </h2>
-                <div className="bg-white dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-white/10 shadow-sm overflow-hidden">
-                  <div className="divide-y divide-gray-50 dark:divide-white/5">
-                    {suggestions.map(member => (
-                      <MemberRow key={member.id} member={member} isFollowing={false} onToggle={toggleFollow} />
-                    ))}
-                  </div>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={() => toggleFollow(u)} disabled={togglingId === u.id}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-xs font-semibold transition-all ${u.is_following || tab === 'following' ? 'bg-surface-sunken text-content-secondary hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-500' : 'bg-accent text-white hover:bg-accent-hover'}`}>
+                    {togglingId === u.id
+                      ? <Loader2 size={13} className="animate-spin" />
+                      : (tab === 'following' || u.is_following) ? <><UserCheck size={13} /> {t('social.following')}</> : <><UserPlus size={13} /> {t('social.follow')}</>}
+                  </button>
+                  <Link href="/messages" className="flex items-center gap-1.5 px-3 py-2 rounded-md bg-surface-sunken text-xs font-semibold text-content-secondary hover:bg-[#004AAD]/10 hover:text-brand-blue-deep transition-all">
+                    <MessageCircle size={13} /> {t('friends.message')}
+                  </Link>
                 </div>
-              </section>
-            )}
-          </>
+              </div>
+            ))}
+          </div>
         )}
+
+        {/* Explore CTA */}
+        {!loading && displayed.length > 0 && (
+          <div className="text-center pt-4">
+            <Link href="/social/explore">
+              <button className="flex items-center gap-2 mx-auto text-sm font-semibold text-accent hover:underline">
+                <UserPlus size={15} /> {t('friends.discover')}
+              </button>
+            </Link>
+          </div>
+        )}
+
+        <div className="h-10" />
       </div>
     </DashboardShell>
-  );
-}
-
-function MemberRow({ member, isFollowing, onToggle }: {
-  member: typeof mockMembers[0];
-  isFollowing: boolean;
-  onToggle: (id: string, name: string) => void;
-}) {
-  return (
-    <div className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-      <Link href={`/social/${member.username}`}>
-        <Avatar src={member.avatar} name={member.name} size={48} online={member.isOnline} />
-      </Link>
-      <div className="flex-1 min-w-0">
-        <Link href={`/social/${member.username}`}>
-          <p className="font-semibold text-sm text-gray-900 dark:text-white hover:text-[#F87404] transition-colors">{member.name}</p>
-        </Link>
-        <p className="text-xs text-gray-400 dark:text-gray-500">@{member.username}</p>
-        <div className="flex items-center gap-3 mt-0.5">
-          <span className="text-[11px] text-gray-400 dark:text-gray-500">{member.followers} followers</span>
-          <span className="text-[11px] text-gray-400 dark:text-gray-500">{member.friends} friends</span>
-        </div>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <Link href={`/messages`}
-          className="w-9 h-9 rounded-xl flex items-center justify-center border border-gray-200 dark:border-white/10 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
-          <MessageCircle size={16} />
-        </Link>
-        <button
-          onClick={() => onToggle(member.id, member.name)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-            isFollowing
-              ? 'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500'
-              : 'bg-[#F87404] text-white hover:bg-[#e06000] shadow-sm shadow-[#F87404]/25'
-          }`}
-        >
-          {isFollowing ? <><UserCheck size={12} /> Following</> : <><UserPlus size={12} /> Follow</>}
-        </button>
-      </div>
-    </div>
   );
 }

@@ -40,4 +40,19 @@ return [
         'app_key' => env('NUTRITIONIX_APP_KEY'),
     ],
 
+    'google' => [
+        'client_id'     => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect'      => env('GOOGLE_REDIRECT_URI'),
+    ],
+
+    'stripe' => [
+        // Publishable key — safe to expose to the browser.
+        'key'            => env('STRIPE_KEY'),
+        // Secret key — server only. Never send this to the frontend.
+        'secret'         => env('STRIPE_SECRET'),
+        // Used to verify that a webhook request genuinely came from Stripe.
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+    ],
+
 ];

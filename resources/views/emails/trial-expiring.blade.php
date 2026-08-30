@@ -11,8 +11,12 @@
       </td></tr>
       <tr><td style="padding:40px;">
         <h2 style="color:#E6EDF3;font-size:22px;margin:0 0 16px;">Hey {{ $user->name }}, your trial ends in 3 days!</h2>
-        <p style="color:#8B949E;font-size:16px;line-height:1.6;margin:0 0 20px;">Don't let your progress disappear. Upgrade now to keep access to all your data, food logs, workouts, and your AI coach.</p>
-        <p style="color:#8B949E;font-size:14px;margin:20px 0;">Continue for just <strong style="color:#FACC15;">$7.99/month</strong> — cancel anytime.</p>
+        <p style="color:#8B949E;font-size:16px;line-height:1.6;margin:0 0 20px;">Everything you have logged — meals, workouts, weight and progress — stays exactly where it is when you subscribe.</p>
+        {{-- No price quoted here on purpose. Plans live in the database and are
+             editable; hardcoding a figure in an email guarantees it eventually
+             contradicts what the customer is actually charged. The previous
+             version advertised $7.99/month, which matched no existing plan. --}}
+        <p style="color:#8B949E;font-size:14px;margin:20px 0;">Pick the plan that suits you — cancel any time.</p>
         <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:20px 0;">
           <a href="{{ env('FRONTEND_URL', 'http://localhost:3000') }}/membership" style="background:linear-gradient(135deg,#F97316,#E63946);color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:bold;display:inline-block;">Upgrade Now →</a>
         </td></tr></table>

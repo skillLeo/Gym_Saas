@@ -1,165 +1,282 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { formatDate } from '@/lib/format';
+import type { Locale } from '@/store/i18nStore';
+import { useI18nStore } from '@/store/i18nStore';
+import { MessageImage } from '@/components/ui/MessageImage';
 import { DashboardShell } from '@/components/layout/DashboardShell';
-import { mockConversations, mockMembers } from '@/lib/mockData';
-import { ChevronLeft, Send, Image, Smile, Phone, Video, MoreHorizontal, Check, CheckCheck } from 'lucide-react';
+import { Avatar } from '@/components/ui/Avatar';
+import api from '@/lib/api';
+import { ChevronLeft, Send, Phone, Video, MoreHorizontal, Loader2, Paperclip, X, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import toast from 'react-hot-toast';
+
+type OtherUser = { id: number; name: string; avatar: string | null };
+type Message = {
+  id:         number;
+  content:    string;
+  image_url?: string | null;
+  is_mine:    boolean;
+  sender:     OtherUser | null;
+  created_at: string;
+};
+type ConvInfo = {
+  id:         number;
+  other_user: OtherUser | null;
+};
+
+/** Module scope, so the locale is passed in rather than read here. */
+function fmtTime(iso: string, locale: Locale): string {
+  return formatDate(new Date(iso), locale, { hour: '2-digit', minute: '2-digit' });
+}
 
 export default function ConversationPage() {
+  const { t, locale } = useI18nStore();
   const params = useParams();
   const convId = params?.conversationId as string;
 
-  const conv = mockConversations.find(c => c.id === convId) || mockConversations[0];
-  const me = mockMembers[0];
+  const [conv,     setConv]     = useState<ConvInfo | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input,    setInput]    = useState('');
+  const [loading,  setLoading]  = useState(true);
+  const [denied,   setDenied]   = useState(false);
+  const [sending,  setSending]  = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const bottomRef    = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastIdRef    = useRef<number>(0);
+  const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const [messages, setMessages] = useState(conv.messages);
-  const [input, setInput] = useState('');
-  const [typing, setTyping] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const fetchConversation = useCallback(async () => {
+    if (!convId) return;
+    try {
+      const res = await api.get(`/messages/${convId}`);
+      setConv(res.data.conversation);
+      const msgs: Message[] = res.data.messages;
+      setMessages(msgs);
+      lastIdRef.current = msgs.length > 0 ? msgs[msgs.length - 1].id : 0;
+    } catch (e: unknown) {
+      // Typing someone else's conversation id into the address bar is correctly
+      // refused by the server, but this used to render an empty chat with no
+      // name and a toast that had already faded — indistinguishable from the app
+      // being broken. Say plainly that the conversation is not theirs.
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      setDenied(status === 403 || status === 404);
+      if (status !== 403 && status !== 404) toast.error(t('conversation.error.load'));
+    } finally {
+      setLoading(false);
+    }
+  }, [convId]);
+
+  useEffect(() => { fetchConversation(); }, [fetchConversation]);
+
+  useEffect(() => {
+    // `denied` stops the poll re-asking for a conversation the server has
+    // already refused; without it the page sat quietly firing a 403 every few
+    // seconds for as long as it was open.
+    if (!convId || denied) return;
+    // Skipped while the tab is hidden: the backend serves one request at a
+    // time in development, so a background tab polling forever competes with
+    // the window the member is actually looking at.
+    pollRef.current = setInterval(async () => {
+      if (document.visibilityState === 'hidden') return;
+      try {
+        const res = await api.get(`/messages/${convId}/messages`, { params: { since: lastIdRef.current } });
+        const newMsgs: Message[] = res.data.messages;
+        if (newMsgs.length > 0) {
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const deduped = newMsgs.filter(m => !existingIds.has(m.id));
+            return deduped.length > 0 ? [...prev, ...deduped] : prev;
+          });
+          lastIdRef.current = Math.max(lastIdRef.current, ...newMsgs.map(m => m.id));
+        }
+      } catch { /* silent */ }
+    }, 4000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [convId, denied]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const sendMessage = () => {
-    if (!input.trim()) return;
-    const newMsg = { id: `m${Date.now()}`, senderId: '1', text: input.trim(), time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }), isOwn: true };
-    setMessages(prev => [...prev, newMsg]);
-    setInput('');
-
-    // Simulate reply
-    setTyping(true);
-    setTimeout(() => {
-      setTyping(false);
-      setMessages(prev => [...prev, {
-        id: `m${Date.now() + 1}`,
-        senderId: conv.participant.id,
-        text: "That's awesome! Keep up the great work! 💪",
-        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        isOwn: false,
-      }]);
-    }, 1800);
+  const handleAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('folder', 'messages');
+      const res = await api.post('/uploads/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setPendingImage(res.data.image_url);
+    } catch {
+      toast.error(t('messages.error.upload'));
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
-  const quickReplies = ["👍", "🔥 Let's go!", "Nice work!", "When's the next session?", "Proud of you!"];
+  const sendMessage = async () => {
+    if ((!input.trim() && !pendingImage) || sending || !convId) return;
+    const content = input.trim();
+    const image = pendingImage;
+    setInput('');
+    setPendingImage(null);
+    setSending(true);
+    const optimistic: Message = {
+      id:         Date.now(),
+      content,
+      image_url:  image,
+      is_mine:    true,
+      sender:     null,
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, optimistic]);
+    try {
+      const res = await api.post(`/messages/${convId}/messages`, { content, image_url: image });
+      const saved: Message = res.data.message;
+      setMessages(prev => {
+        // The poll may have already fetched this message while the send was in flight
+        if (prev.some(m => m.id === saved.id)) return prev.filter(m => m.id !== optimistic.id);
+        return prev.map(m => m.id === optimistic.id ? saved : m);
+      });
+      lastIdRef.current = Math.max(lastIdRef.current, saved.id);
+    } catch {
+      setMessages(prev => prev.filter(m => m.id !== optimistic.id));
+      setInput(content);
+      setPendingImage(image);
+      toast.error(t('conversation.error.send'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (denied) {
+    return (
+      <DashboardShell>
+        <div className="max-w-md mx-auto text-center py-20 px-4">
+          <div className="w-14 h-14 rounded-md bg-surface-sunken flex items-center justify-center mx-auto mb-4">
+            <Lock size={24} strokeWidth={1.75} className="text-content-tertiary" />
+          </div>
+          <h1 className="font-semibold text-content-primary mb-1.5">{t('conversation.notYours')}</h1>
+          <p className="text-body-sm text-content-secondary mb-6">
+            {t('conversation.notYoursHint')}
+          </p>
+          <Link href="/messages"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-accent text-white text-body-sm font-medium hover:bg-accent-hover transition-colors">
+            <ChevronLeft size={16} strokeWidth={2} />
+            {t('conversation.backLong')}
+          </Link>
+        </div>
+      </DashboardShell>
+    );
+  }
 
   return (
+    // `fullWidth` is what gives the shell a real height (see AppShell). Without
+    // it the `h-full` below had nothing to measure against, so the message list
+    // never became its own scroll container and the whole page scrolled — which
+    // on mobile meant the composer scrolled off the bottom of the screen.
     <DashboardShell fullWidth>
-      <div className="flex-1 min-h-0 flex flex-col max-w-lg mx-auto w-full">
+      <div className="flex flex-col h-full max-w-2xl mx-auto w-full px-4 md:px-6">
 
-        {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-[#1a1a1a] border-b border-gray-100 dark:border-white/[0.07] shrink-0">
-          <Link href="/messages">
-            <button className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
-              <ChevronLeft size={18} className="text-gray-600 dark:text-gray-400" />
-            </button>
+        {/*
+          Intentionally NOT the shared <PageHeader />. A chat detail header's job
+          is to show WHO you are talking to — avatar, name, presence — which
+          PageHeader has no slot for. Swapping it in would drop the avatar and
+          make the screen less useful. Documented so it does not read as a miss.
+
+          Removed: Phone and Video buttons. Neither had an onClick — they looked
+          tappable and did nothing. There is no calling feature to wire them to.
+        */}
+        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border-subtle shrink-0 bg-surface-raised rounded-t-md">
+          <Link
+            href="/messages"
+            aria-label={t('conversation.back')}
+            className="w-9 h-9 flex items-center justify-center rounded-sm hover:bg-surface-sunken transition-colors text-content-secondary"
+          >
+            <ChevronLeft size={20} strokeWidth={1.75} />
           </Link>
-
-          <Link href={`/social/${conv.participant.username}`} className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="relative shrink-0">
-              <img src={conv.participant.avatar} alt={conv.participant.name}
-                className="w-9 h-9 rounded-full object-cover" />
-              {conv.participant.isOnline && (
-                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-white dark:border-[#1a1a1a]" />
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="font-semibold text-gray-900 dark:text-white text-sm truncate">{conv.participant.name}</div>
-              <div className="text-xs text-gray-400">{conv.participant.isOnline ? 'Online now' : 'Last seen recently'}</div>
-            </div>
-          </Link>
-
-          <div className="flex gap-1 shrink-0">
-            <button className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors text-gray-500">
-              <Phone size={15} />
-            </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors text-gray-500">
-              <Video size={15} />
-            </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors text-gray-500">
-              <MoreHorizontal size={15} />
-            </button>
+          {conv?.other_user && (
+            <>
+              <Avatar src={conv.other_user.avatar || undefined} name={conv.other_user.name} size={38} />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-body-sm text-content-primary truncate">{conv.other_user.name}</p>
+              </div>
+            </>
+          )}
+          <div className="flex items-center gap-1">
+            <button className="w-9 h-9 rounded-md flex items-center justify-center text-content-secondary hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"><MoreHorizontal size={17} /></button>
           </div>
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-gray-50 dark:bg-[#0d0d0d]">
-
-          {/* Date separator */}
-          <div className="flex items-center gap-3 my-2">
-            <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
-            <span className="text-xs text-gray-400">Today</span>
-            <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />
-          </div>
-
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex items-end gap-2 ${msg.isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
-              {!msg.isOwn && (
-                <img src={conv.participant.avatar} alt="" className="w-7 h-7 rounded-full object-cover shrink-0 mb-0.5" />
-              )}
-              <div className={`max-w-[75%] ${msg.isOwn ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-                <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                  msg.isOwn
-                    ? 'bg-[#F87404] text-white rounded-br-sm'
-                    : 'bg-white dark:bg-[#1a1a1a] text-gray-900 dark:text-white border border-gray-100 dark:border-white/[0.07] rounded-bl-sm'
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/30 dark:bg-black/10">
+          {loading ? (
+            <div className="flex justify-center py-10"><Loader2 size={24} className="animate-spin text-accent" /></div>
+          ) : messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full py-16 text-center">
+              <p className="text-sm text-content-tertiary">{t('messages.emptyMessages')}</p>
+            </div>
+          ) : (
+            messages.map(msg => (
+              <div key={msg.id} className={`flex items-end gap-2 ${msg.is_mine ? 'flex-row-reverse' : ''}`}>
+                {!msg.is_mine && conv?.other_user && (
+                  <Avatar src={conv.other_user.avatar || undefined} name={conv.other_user.name} size={28} />
+                )}
+                <div className={`max-w-xs md:max-w-sm px-4 py-2.5 rounded-md text-sm shadow-sm ${
+                  msg.is_mine
+                    ? 'bg-accent text-white rounded-br-sm'
+                    : 'bg-surface-raised text-gray-800 dark:text-gray-200 border border-border-subtle rounded-bl-sm'
                 }`}>
-                  {msg.text}
-                </div>
-                <div className={`flex items-center gap-1 text-[10px] text-gray-400 ${msg.isOwn ? 'flex-row-reverse' : ''}`}>
-                  <span>{msg.time}</span>
-                  {msg.isOwn && <CheckCheck size={12} className="text-[#F87404]" />}
+                  {msg.image_url && (
+                    <MessageImage src={msg.image_url} />
+                  )}
+                  {msg.content && <p className="leading-relaxed">{msg.content}</p>}
+                  <p className={`text-[10px] mt-1 ${msg.is_mine ? 'text-white/70 text-right' : 'text-content-tertiary'}`}>
+                    {fmtTime(msg.created_at, locale)}
+                  </p>
                 </div>
               </div>
-            </div>
-          ))}
-
-          {/* Typing indicator */}
-          {typing && (
-            <div className="flex items-end gap-2">
-              <img src={conv.participant.avatar} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
-              <div className="bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/[0.07] px-4 py-3 rounded-2xl rounded-bl-sm flex gap-1 items-center">
-                {[0, 1, 2].map(i => (
-                  <div key={i} className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-                ))}
-              </div>
-            </div>
+            ))
           )}
           <div ref={bottomRef} />
         </div>
 
-        {/* Quick Replies */}
-        <div className="flex gap-2 px-4 py-2 bg-white dark:bg-[#1a1a1a] border-t border-gray-100 dark:border-white/[0.07] overflow-x-auto scrollbar-hide shrink-0">
-          {quickReplies.map(r => (
-            <button key={r} onClick={() => setInput(r)}
-              className="px-3 py-1.5 rounded-full border border-gray-200 dark:border-white/10 text-xs text-gray-700 dark:text-gray-300 hover:border-[#F87404]/40 hover:text-[#F87404] transition-all whitespace-nowrap shrink-0">
-              {r}
-            </button>
-          ))}
-        </div>
-
         {/* Input */}
-        <div className="flex items-end gap-2 px-4 py-3 bg-white dark:bg-[#1a1a1a] border-t border-gray-100 dark:border-white/[0.07] shrink-0">
-          <button className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:text-[#F87404] hover:bg-[#F87404]/10 transition-colors shrink-0">
-            <Image size={18} />
-          </button>
-          <div className="flex-1 relative">
+        <div className="px-4 py-3.5 border-t border-border-subtle shrink-0 bg-white dark:bg-[#111] rounded-b-2xl">
+          {pendingImage && (
+            <div className="relative inline-block mb-2">
+              <img src={pendingImage} alt="" className="h-16 rounded-md object-cover" />
+              <button onClick={() => setPendingImage(null)}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black transition-colors">
+                <X size={11} />
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-3 bg-surface-sunken border border-border-strong rounded-md px-4 py-2.5 focus-within:border-accent transition-colors">
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAttach} disabled={uploadingImage} />
+            <button onClick={() => fileInputRef.current?.click()} disabled={uploadingImage}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-content-tertiary hover:text-accent hover:bg-accent-surface transition-colors shrink-0">
+              {uploadingImage ? <Loader2 size={15} className="animate-spin" /> : <Paperclip size={16} />}
+            </button>
             <input
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-              placeholder="Message..."
-              className="w-full px-4 py-3 pr-10 rounded-2xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F87404]/40 text-sm"
+              placeholder={t('messages.typeMessage')}
+              className="flex-1 bg-transparent text-sm text-content-primary placeholder:text-content-tertiary field-inset outline-none"
             />
-            <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#F87404] transition-colors">
-              <Smile size={16} />
+            <button onClick={sendMessage} disabled={(!input.trim() && !pendingImage) || sending}
+              className="w-8 h-8 rounded-md bg-accent flex items-center justify-center text-white hover:bg-accent-hover transition-colors disabled:opacity-40">
+              {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
             </button>
           </div>
-          <button onClick={sendMessage} disabled={!input.trim()}
-            className="w-10 h-10 rounded-full bg-[#F87404] flex items-center justify-center text-white shadow-md shadow-orange-500/20 hover:bg-[#e66a00] transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 shrink-0">
-            <Send size={16} />
-          </button>
         </div>
       </div>
     </DashboardShell>

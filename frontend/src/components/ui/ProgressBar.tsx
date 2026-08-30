@@ -1,26 +1,46 @@
 interface ProgressBarProps {
   value: number;
   max: number;
+  /** Any CSS color. Defaults to the section accent. */
   color?: string;
   height?: number;
   showLabel?: boolean;
   label?: string;
 }
 
-export function ProgressBar({ value, max, color = '#F87404', height = 8, showLabel = false, label }: ProgressBarProps) {
-  const pct = Math.min(100, Math.round((value / max) * 100));
+/**
+ * Solid fill — the gradient was removed (§1.1). Guards against max <= 0 so a
+ * zero goal renders 0% instead of NaN.
+ */
+export function ProgressBar({
+  value,
+  max,
+  color = 'var(--accent)',
+  height = 8,
+  showLabel = false,
+  label,
+}: ProgressBarProps) {
+  const pct = max > 0 ? Math.max(0, Math.min(100, Math.round((value / max) * 100))) : 0;
   return (
     <div className="w-full">
       {(showLabel || label) && (
-        <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+        <div className="flex justify-between text-caption text-content-secondary mb-1">
           <span>{label}</span>
-          <span>{pct}%</span>
+          <span className="tabular">{pct}%</span>
         </div>
       )}
-      <div className="w-full rounded-full bg-gray-100 dark:bg-white/10 overflow-hidden" style={{ height }}>
+      <div
+        className="w-full rounded-full bg-surface-sunken overflow-hidden"
+        style={{ height }}
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={label}
+      >
         <div
-          className="h-full rounded-full transition-all duration-700 ease-out"
-          style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}, ${color}dd)` }}
+          className="h-full rounded-full transition-[width] duration-500 ease-out"
+          style={{ width: `${pct}%`, background: color }}
         />
       </div>
     </div>

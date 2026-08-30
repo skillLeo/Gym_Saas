@@ -1,11 +1,17 @@
 import { create } from 'zustand';
-import { mockPosts, mockMembers } from '@/lib/mockData';
 
 export type Reaction = '👍' | '❤️' | '🔥' | '😍' | '💪' | '🎉';
 
+export interface Author {
+  id: string | number;
+  name: string;
+  avatar: string | null;
+  username?: string;
+}
+
 export interface Reply {
   id: string;
-  author: (typeof mockMembers)[0];
+  author: Author;
   text: string;
   timeAgo: string;
   likes: number;
@@ -14,7 +20,7 @@ export interface Reply {
 
 export interface Comment {
   id: string;
-  author: (typeof mockMembers)[0];
+  author: Author;
   text: string;
   timeAgo: string;
   likes: number;
@@ -26,7 +32,7 @@ export interface Comment {
 
 export interface Post {
   id: string;
-  author: (typeof mockMembers)[0];
+  author: Author;
   content: string;
   images: string[];
   likes: number;
@@ -41,69 +47,32 @@ export interface Post {
   achievementPoster?: string;
 }
 
-const buildInitialPosts = (): Post[] =>
-  mockPosts.map(p => ({
-    id: p.id,
-    author: p.author,
-    content: p.content,
-    images: p.images,
-    likes: p.likes,
-    likedByMe: p.isLiked,
-    myReaction: p.isLiked ? '👍' : null,
-    comments: [
-      {
-        id: `${p.id}-c1`,
-        author: mockMembers[0],
-        text: 'That\'s amazing! Keep crushing it! 🔥',
-        timeAgo: '1 hour ago',
-        likes: 4,
-        likedByMe: false,
-        replies: [
-          { id: `${p.id}-r1`, author: mockMembers[2], text: 'Agreed! Total beast mode 💪', timeAgo: '55 min ago', likes: 2, likedByMe: false },
-          { id: `${p.id}-r2`, author: mockMembers[1], text: 'Facts. This is what dedication looks like!', timeAgo: '45 min ago', likes: 1, likedByMe: false },
-        ],
-        showReplies: false,
-        replyInputOpen: false,
-      },
-      {
-        id: `${p.id}-c2`,
-        author: mockMembers[2],
-        text: 'Incredible progress! What was your training split?',
-        timeAgo: '2 hours ago',
-        likes: 2,
-        likedByMe: false,
-        replies: [
-          { id: `${p.id}-r3`, author: mockMembers[3], text: 'I do push/pull/legs — highly recommend', timeAgo: '1.5 hours ago', likes: 0, likedByMe: false },
-        ],
-        showReplies: false,
-        replyInputOpen: false,
-      },
-    ],
-    commentsOpen: false,
-    timeAgo: p.timeAgo,
-    isAchievement: p.isAchievement,
-  }));
-
 interface SocialState {
   posts: Post[];
   followedIds: Set<string>;
+  setPosts: (posts: Post[]) => void;
+  prependPost: (post: Post) => void;
   toggleReaction: (postId: string, reaction: Reaction) => void;
   toggleComments: (postId: string) => void;
   addPost: (post: Omit<Post, 'id' | 'likes' | 'likedByMe' | 'myReaction' | 'comments' | 'commentsOpen'>) => void;
-  shareAchievement: (achievement: { id: string; title: string; icon: string; description: string; poster?: string | null }) => void;
-  addComment: (postId: string, text: string, author: (typeof mockMembers)[0]) => void;
+  shareAchievement: (achievement: { id: string; title: string; icon: string; description: string; poster?: string | null }, author: Author) => void;
+  addComment: (postId: string, text: string, author: Author) => void;
   toggleCommentLike: (postId: string, commentId: string) => void;
   toggleReplies: (postId: string, commentId: string) => void;
   toggleReplyInput: (postId: string, commentId: string) => void;
-  addReply: (postId: string, commentId: string, text: string, author: (typeof mockMembers)[0]) => void;
+  addReply: (postId: string, commentId: string, text: string, author: Author) => void;
   toggleReplyLike: (postId: string, commentId: string, replyId: string) => void;
   toggleFollow: (memberId: string) => void;
   isFollowing: (memberId: string) => boolean;
 }
 
 export const useSocialStore = create<SocialState>((set, get) => ({
-  posts: buildInitialPosts(),
-  followedIds: new Set(mockMembers.filter(m => m.isFollowing).map(m => m.id)),
+  posts: [],
+  followedIds: new Set<string>(),
+
+  setPosts: (posts) => set({ posts }),
+
+  prependPost: (post) => set(s => ({ posts: [post, ...s.posts] })),
 
   toggleReaction: (postId, reaction) =>
     set(s => ({
@@ -129,12 +98,12 @@ export const useSocialStore = create<SocialState>((set, get) => ({
       posts: [{ ...draft, id: `post-${Date.now()}`, likes: 0, likedByMe: false, myReaction: null, comments: [], commentsOpen: false }, ...s.posts],
     })),
 
-  shareAchievement: (achievement) =>
+  shareAchievement: (achievement, author) =>
     set(s => ({
       posts: [{
         id: `ach-${Date.now()}`,
-        author: mockMembers[0],
-        content: `🏆 I just earned the "${achievement.title}" achievement! ${achievement.description}`,
+        author,
+        content: `I just earned the "${achievement.title}" achievement! ${achievement.description}`,
         images: achievement.poster ? [achievement.poster] : [],
         likes: 0, likedByMe: false, myReaction: null, comments: [], commentsOpen: false,
         timeAgo: 'Just now', isAchievement: true,
@@ -148,7 +117,10 @@ export const useSocialStore = create<SocialState>((set, get) => ({
     set(s => ({
       posts: s.posts.map(p => p.id !== postId ? p : {
         ...p,
-        comments: [...p.comments, { id: `c-${Date.now()}`, author, text, timeAgo: 'Just now', likes: 0, likedByMe: false, replies: [], showReplies: false, replyInputOpen: false }],
+        comments: [...p.comments, {
+          id: `c-${Date.now()}`, author, text, timeAgo: 'Just now',
+          likes: 0, likedByMe: false, replies: [], showReplies: false, replyInputOpen: false,
+        }],
       }),
     })),
 
@@ -156,7 +128,9 @@ export const useSocialStore = create<SocialState>((set, get) => ({
     set(s => ({
       posts: s.posts.map(p => p.id !== postId ? p : {
         ...p,
-        comments: p.comments.map(c => c.id !== commentId ? c : { ...c, likedByMe: !c.likedByMe, likes: c.likedByMe ? c.likes - 1 : c.likes + 1 }),
+        comments: p.comments.map(c => c.id !== commentId ? c : {
+          ...c, likedByMe: !c.likedByMe, likes: c.likedByMe ? c.likes - 1 : c.likes + 1,
+        }),
       }),
     })),
 
@@ -193,7 +167,9 @@ export const useSocialStore = create<SocialState>((set, get) => ({
         ...p,
         comments: p.comments.map(c => c.id !== commentId ? c : {
           ...c,
-          replies: c.replies.map(r => r.id !== replyId ? r : { ...r, likedByMe: !r.likedByMe, likes: r.likedByMe ? r.likes - 1 : r.likes + 1 }),
+          replies: c.replies.map(r => r.id !== replyId ? r : {
+            ...r, likedByMe: !r.likedByMe, likes: r.likedByMe ? r.likes - 1 : r.likes + 1,
+          }),
         }),
       }),
     })),

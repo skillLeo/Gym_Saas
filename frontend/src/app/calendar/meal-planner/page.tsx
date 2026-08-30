@@ -1,148 +1,223 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useI18nStore } from '@/store/i18nStore';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { ChevronLeft, ChevronRight, Plus, Utensils, Flame, X } from 'lucide-react';
-import Link from 'next/link';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { ChevronLeft, ChevronRight, Plus, Utensils, Flame, X, Search, Loader2 } from 'lucide-react';
+import api from '@/lib/api';
+import toast from 'react-hot-toast';
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
-
-const initialPlan: Record<string, Record<string, { name: string; calories: number } | null>> = {
-  Mon: { Breakfast: { name: 'Overnight Oats', calories: 412 }, Lunch: { name: 'Chicken Bowl', calories: 485 }, Dinner: { name: 'Salmon & Quinoa', calories: 520 }, Snack: null },
-  Tue: { Breakfast: { name: 'Scrambled Eggs & Toast', calories: 372 }, Lunch: { name: 'Turkey Wrap', calories: 420 }, Dinner: null, Snack: { name: 'Greek Yogurt', calories: 130 } },
-  Wed: { Breakfast: null, Lunch: null, Dinner: { name: 'Turkey Taco Bowls', calories: 455 }, Snack: null },
-  Thu: { Breakfast: { name: 'Protein Smoothie', calories: 310 }, Lunch: null, Dinner: null, Snack: null },
-  Fri: { Breakfast: null, Lunch: null, Dinner: null, Snack: null },
-  Sat: { Breakfast: null, Lunch: null, Dinner: null, Snack: null },
-  Sun: { Breakfast: { name: 'Pancakes (protein)', calories: 380 }, Lunch: { name: 'Meal Prep Bowl', calories: 510 }, Dinner: null, Snack: null },
+const DAY_KEYS = ['day.sunday', 'day.monday', 'day.tuesday', 'day.wednesday', 'day.thursday', 'day.friday', 'day.saturday'];
+const MEAL_SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
+// Dictionary keys, not sentences — module scope runs before the component
+// mounts, so these are resolved with t() at render time.
+const MEAL_LABEL_KEYS: Record<string, string> = {
+  breakfast: 'common.breakfast', lunch: 'common.lunch',
+  dinner: 'common.dinner', snack: 'common.snack',
 };
 
-const mealSuggestions = [
-  { name: 'Overnight Oats', calories: 412 },
-  { name: 'Scrambled Eggs', calories: 234 },
-  { name: 'Chicken Bowl', calories: 485 },
-  { name: 'Salmon & Quinoa', calories: 520 },
-  { name: 'Turkey Tacos', calories: 455 },
-  { name: 'Protein Smoothie', calories: 310 },
-];
+interface MealPlanEntry {
+  id: number; recipe_id: number | null; recipe_name: string | null;
+  day_of_week: number; meal_slot: string; notes: string | null;
+}
+interface RecipeOption { id: number; name: string; calories: number }
+
+function getWeekStart(offset: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - d.getDay() + offset * 7);
+  return d.toISOString().split('T')[0];
+}
 
 export default function MealPlannerPage() {
-  const [plan, setPlan] = useState(initialPlan);
-  const [selectedCell, setSelectedCell] = useState<{ day: string; meal: string } | null>(null);
+  const { t } = useI18nStore();
   const [weekOffset, setWeekOffset] = useState(0);
+  const [plans, setPlans] = useState<MealPlanEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedCell, setSelectedCell] = useState<{ day: number; meal: string } | null>(null);
+  const [recipeSearch, setRecipeSearch] = useState('');
+  const [recipeResults, setRecipeResults] = useState<RecipeOption[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [adding, setAdding] = useState(false);
 
-  const getDayCalories = (day: string) =>
-    Object.values(plan[day]).reduce((s, m) => s + (m?.calories || 0), 0);
+  const weekStart = getWeekStart(weekOffset);
 
-  const clearMeal = (day: string, meal: string) => {
-    setPlan(p => ({ ...p, [day]: { ...p[day], [meal]: null } }));
+  const loadPlans = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/calendar/meal-plans', { params: { week_start: weekStart } });
+      setPlans(res.data.meal_plans ?? []);
+    } catch {
+      toast.error(t('mealPlanner.error.load'));
+    } finally {
+      setLoading(false);
+    }
+  }, [weekStart]);
+
+  useEffect(() => { loadPlans(); }, [loadPlans]);
+
+  useEffect(() => {
+    if (!recipeSearch.trim()) { setRecipeResults([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await api.get('/recipes', { params: { search: recipeSearch } });
+        setRecipeResults((res.data.data ?? []).slice(0, 8));
+      } finally {
+        setSearching(false);
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [recipeSearch]);
+
+  const entryFor = (day: number, meal: string) => plans.find(p => p.day_of_week === day && p.meal_slot === meal);
+
+  const getDayCalories = (day: number) => {
+    // Calories aren't stored on the meal plan row itself; this shows entry count as a lightweight proxy.
+    return MEAL_SLOTS.filter(m => entryFor(day, m)).length;
   };
 
-  const addMeal = (day: string, meal: string, suggestion: { name: string; calories: number }) => {
-    setPlan(p => ({ ...p, [day]: { ...p[day], [meal]: suggestion } }));
-    setSelectedCell(null);
+  const clearMeal = async (entry: MealPlanEntry) => {
+    setPlans(p => p.filter(e => e.id !== entry.id));
+    try {
+      await api.delete(`/calendar/meal-plans/${entry.id}`);
+    } catch {
+      toast.error(t('mealPlanner.error.remove'));
+      loadPlans();
+    }
+  };
+
+  const addMeal = async (recipe: RecipeOption) => {
+    if (!selectedCell) return;
+    setAdding(true);
+    try {
+      const res = await api.post(`/recipes/${recipe.id}/meal-plan`, {
+        week_start: weekStart,
+        day_of_week: selectedCell.day,
+        meal_slot: selectedCell.meal,
+      });
+      toast.success(res.data.message);
+      setSelectedCell(null);
+      setRecipeSearch('');
+      await loadPlans();
+    } catch {
+      toast.error(t('mealPlanner.error.add'));
+    } finally {
+      setAdding(false);
+    }
   };
 
   return (
     <DashboardShell>
       <div className="max-w-4xl mx-auto px-4 py-6">
 
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/calendar">
-            <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/[0.07] hover:border-[#F87404]/40 transition-colors">
-              <ChevronLeft size={18} className="text-gray-600 dark:text-gray-400" />
-            </button>
-          </Link>
-          <div className="flex-1">
-            <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-white">Meal Planner</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Plan your nutrition for the week</p>
-          </div>
-        </div>
+        <PageHeader
+        title={t('mealPlanner.title')}
+        subtitle={t('mealPlanner.subtitle')}
+        back="/calendar"
+      />
 
         {/* Week Nav */}
         <div className="flex items-center justify-between mb-5">
-          <button onClick={() => setWeekOffset(w => w - 1)} className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-[#F87404] transition-colors">
-            <ChevronLeft size={16} /> Prev Week
+          <button onClick={() => setWeekOffset(w => w - 1)} className="flex items-center gap-1.5 text-sm text-content-secondary hover:text-accent transition-colors">
+            <ChevronLeft size={16} /> {t('mealPlanner.prevWeek')}
           </button>
-          <span className="font-semibold text-gray-900 dark:text-white text-sm">
-            {weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Next Week' : `Week ${weekOffset > 0 ? '+' : ''}${weekOffset}`}
+          <span className="font-semibold text-content-primary text-sm">
+            {weekOffset === 0 ? t('mealPlanner.thisWeek') : weekOffset === 1 ? t('mealPlanner.nextWeek') : weekOffset === -1 ? t('mealPlanner.lastWeek') : `Week of ${weekStart}`}
           </span>
-          <button onClick={() => setWeekOffset(w => w + 1)} className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-[#F87404] transition-colors">
-            Next Week <ChevronRight size={16} />
+          <button onClick={() => setWeekOffset(w => w + 1)} className="flex items-center gap-1.5 text-sm text-content-secondary hover:text-accent transition-colors">
+            {t('mealPlanner.nextWeek')} <ChevronRight size={16} />
           </button>
         </div>
 
-        {/* Mobile-friendly meal grid */}
-        <div className="space-y-4">
-          {DAYS.map(day => (
-            <Card key={day}>
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-900 dark:text-white">{day}</span>
-                    <span className="text-xs text-gray-400">— {getDayCalories(day)} kcal</span>
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 size={28} className="animate-spin text-accent" />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {DAY_KEYS.map((dayKey, day) => (
+              <Card key={day}>
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-content-primary">{t(dayKey)}</span>
+                      <span className="text-xs text-content-tertiary">{t('mealPlanner.mealsPlanned', { done: getDayCalories(day) })}</span>
+                    </div>
+                    <div className="h-1.5 w-20 bg-surface-sunken rounded-full overflow-hidden">
+                      <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${(getDayCalories(day) / 4) * 100}%` }} />
+                    </div>
                   </div>
-                  <div className="h-1.5 w-20 bg-gray-100 dark:bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#F87404] rounded-full transition-all" style={{ width: `${Math.min((getDayCalories(day) / 2000) * 100, 100)}%` }} />
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {MEAL_SLOTS.map(meal => {
+                      const entry = entryFor(day, meal);
+                      return (
+                        <div key={meal} className="relative">
+                          {entry ? (
+                            <div className="p-2.5 bg-accent-surface border border-accent/20 rounded-md">
+                              <div className="flex items-start justify-between mb-0.5">
+                                <span className="text-xs font-medium text-accent">{t(MEAL_LABEL_KEYS[meal])}</span>
+                                <button onClick={() => clearMeal(entry)} className="text-content-tertiary hover:text-red-500 -mt-0.5 -mr-0.5">
+                                  <X size={12} />
+                                </button>
+                              </div>
+                              <div className="text-xs font-medium text-content-primary leading-snug line-clamp-2">{entry.recipe_name}</div>
+                            </div>
+                          ) : (
+                            <button onClick={() => setSelectedCell({ day, meal })}
+                              // The visible label is just the meal name plus a
+                              // plus icon, which reads as a heading rather than
+                              // a control to anyone not looking at the dashes.
+                              aria-label={t('mealPlanner.addMealFor', { meal: t(MEAL_LABEL_KEYS[meal]), day: t(DAY_KEYS[day]) })}
+                              className="w-full h-full min-h-[70px] p-2.5 rounded-md border-2 border-dashed border-border-strong hover:border-accent/40 transition-all flex flex-col items-center justify-center gap-1">
+                              <span className="text-xs text-content-tertiary">{t(MEAL_LABEL_KEYS[meal])}</span>
+                              <Plus size={14} className="text-content-tertiary dark:text-content-secondary" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {MEALS.map(meal => {
-                    const entry = plan[day][meal];
-                    return (
-                      <div key={meal} className="relative">
-                        {entry ? (
-                          <div className="p-2.5 bg-[#F87404]/10 border border-[#F87404]/20 rounded-xl">
-                            <div className="flex items-start justify-between mb-0.5">
-                              <span className="text-xs font-medium text-[#F87404]">{meal}</span>
-                              <button onClick={() => clearMeal(day, meal)} className="text-gray-400 hover:text-red-500 -mt-0.5 -mr-0.5">
-                                <X size={12} />
-                              </button>
-                            </div>
-                            <div className="text-xs font-medium text-gray-900 dark:text-white leading-snug">{entry.name}</div>
-                            <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                              <Flame size={9} className="text-[#F87404]" /> {entry.calories}
-                            </div>
-                          </div>
-                        ) : (
-                          <button onClick={() => setSelectedCell({ day, meal })}
-                            className="w-full p-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-white/10 hover:border-[#F87404]/40 transition-all flex flex-col items-center gap-1">
-                            <span className="text-xs text-gray-400">{meal}</span>
-                            <Plus size={14} className="text-gray-300 dark:text-gray-600" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+              </Card>
+            ))}
+          </div>
+        )}
 
-        {/* Meal Picker Modal */}
+        {/* Recipe Picker Modal */}
         {selectedCell && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedCell(null)} />
-            <div className="relative w-full sm:max-w-sm bg-white dark:bg-[#1a1a1a] rounded-t-3xl sm:rounded-3xl p-5 z-10 shadow-2xl border border-gray-100 dark:border-white/[0.07]">
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Add {selectedCell.meal}</h3>
-              <p className="text-xs text-gray-400 mb-4">{selectedCell.day}</p>
-              <div className="space-y-2">
-                {mealSuggestions.map(s => (
-                  <button key={s.name} onClick={() => addMeal(selectedCell.day, selectedCell.meal, s)}
-                    className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.05] transition-colors text-left border border-transparent hover:border-[#F87404]/20">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => { setSelectedCell(null); setRecipeSearch(''); }} />
+            <div className="relative w-full sm:max-w-sm bg-surface-raised rounded-t-3xl sm:rounded-md p-5 z-10 border border-border-subtle">
+              <h3 className="font-semibold text-content-primary mb-1">{t('mealPlanner.addMeal', { meal: t(MEAL_LABEL_KEYS[selectedCell.meal]) })}</h3>
+              <p className="text-xs text-content-tertiary mb-4">{t(DAY_KEYS[selectedCell.day])}</p>
+              <div className="relative mb-3">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-tertiary" />
+                <input value={recipeSearch} onChange={e => setRecipeSearch(e.target.value)} autoFocus
+                  placeholder={t('mealPlanner.search')}
+                  className="w-full pl-8 pr-3 py-2.5 rounded-md border border-border-strong bg-surface-sunken text-sm text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" />
+                {searching && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-content-tertiary animate-spin" />}
+              </div>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {recipeResults.length === 0 && recipeSearch.trim() && !searching && (
+                  <p className="text-sm text-content-tertiary text-center py-4">{t('mealPlanner.noRecipes')}</p>
+                )}
+                {!recipeSearch.trim() && (
+                  <p className="text-sm text-content-tertiary text-center py-4">{t('mealPlanner.searchAdd')}</p>
+                )}
+                {recipeResults.map(r => (
+                  <button key={r.id} onClick={() => addMeal(r)} disabled={adding}
+                    className="w-full flex items-center justify-between p-3 rounded-md hover:bg-gray-50 dark:hover:bg-white/[0.05] transition-colors text-left border border-transparent hover:border-accent/20 disabled:opacity-60">
                     <div className="flex items-center gap-2">
-                      <Utensils size={14} className="text-[#F87404]" />
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">{s.name}</span>
+                      <Utensils size={14} className="text-accent" />
+                      <span className="text-sm font-medium text-content-primary">{r.name}</span>
                     </div>
-                    <span className="text-xs text-gray-400">{s.calories} kcal</span>
+                    <span className="text-xs text-content-tertiary flex items-center gap-1"><Flame size={10} />{r.calories} kcal</span>
                   </button>
                 ))}
               </div>
-              <button onClick={() => setSelectedCell(null)} className="mt-3 text-xs text-gray-400 w-full text-center py-1">Cancel</button>
+              <button onClick={() => { setSelectedCell(null); setRecipeSearch(''); }} className="mt-3 text-xs text-content-tertiary w-full text-center py-1">{t('common.cancel')}</button>
             </div>
           </div>
         )}

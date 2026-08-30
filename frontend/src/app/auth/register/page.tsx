@@ -1,243 +1,279 @@
 'use client';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, Mail, Lock, User, ArrowRight, CheckCircle } from 'lucide-react';
-import { useAuthStore, AuthUser } from '@/store/authStore';
+import { Eye, EyeOff, ArrowRight, Check, Minus } from 'lucide-react';
+import { useAuthStore } from '@/store/authStore';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Field';
+import { Alert } from '@/components/ui/States';
+import api from '@/lib/api';
 
-export default function RegisterPage() {
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const betaBlocked = searchParams.get('beta_blocked') === '1';
   const { setAuth } = useAuthStore();
-  const [form, setForm] = useState({ name: '', email: '', password: '', password_confirmation: '' });
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    password_confirmation: '',
+  });
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
-    if (form.password !== form.password_confirmation) {
-      setErrors({ password_confirmation: 'Passwords do not match.' });
-      return;
-    }
-    if (form.password.length < 6) {
-      setErrors({ password: 'Password must be at least 6 characters.' });
-      return;
-    }
-    if (!form.name.trim()) {
-      setErrors({ name: 'Name is required.' });
-      return;
-    }
+
+    if (!form.name.trim()) return setErrors({ name: 'Enter your name.' });
+    if (!EMAIL_PATTERN.test(form.email.trim()))
+      return setErrors({ email: 'Enter a valid email address, e.g. name@example.com.' });
+    if (form.password.length < 8)
+      return setErrors({ password: 'Use at least 8 characters.' });
+    if (form.password !== form.password_confirmation)
+      return setErrors({ password_confirmation: 'Passwords do not match.' });
+
     setLoading(true);
-    setTimeout(() => {
-      const newUser: AuthUser = {
-        id: Math.floor(Math.random() * 9000) + 100,
+    try {
+      const res = await api.post('/auth/register', {
         name: form.name.trim(),
         email: form.email.trim().toLowerCase(),
-        avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(form.name.trim())}&background=F87404&color=fff&size=128`,
-        bio: '',
-        is_admin: false,
-        onboarding_completed: false,
-        subscription_status: 'trial',
-        is_on_trial: true,
-        trial_days_remaining: 30,
-        trial_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        member_since: new Date().toISOString().split('T')[0],
-        daily_water_goal_glasses: 8,
-        daily_calorie_goal: 2000,
-        daily_protein_goal_g: 130,
-        daily_carbs_goal_g: 200,
-        daily_fat_goal_g: 65,
-      };
-      const token = `mock-token-${Date.now()}`;
-      setAuth(newUser, token);
+        password: form.password,
+        password_confirmation: form.password_confirmation,
+      });
+      const { token, user } = res.data.data;
+      setAuth(user, token);
       document.cookie = `auth_token=${token}; path=/; max-age=2592000`;
-      toast.success('Welcome! Your 30-day free trial has started 🎉');
-      router.replace('/auth/onboarding');
+      toast.success('Account created. Your 30-day trial has started.');
+      router.replace(user.email_verified ? '/auth/onboarding' : '/auth/verify-email');
+    } catch (err) {
+      const data = (err as { response?: { data?: { errors?: Record<string, string[]>; message?: string } } })
+        .response?.data;
+      if (data?.errors) {
+        const mapped: Record<string, string> = {};
+        Object.entries(data.errors).forEach(([k, v]) => {
+          mapped[k] = v[0];
+        });
+        setErrors(mapped);
+      } else {
+        setErrors({ general: data?.message || 'Could not create your account. Please try again.' });
+      }
+    } finally {
       setLoading(false);
-    }, 800);
+    }
   };
 
-  const passwordStrength = (() => {
-    const p = form.password;
-    if (!p) return null;
-    if (p.length < 6) return { level: 1, label: 'Weak', color: '#ef4444' };
-    if (p.length < 10) return { level: 2, label: 'Fair', color: '#f59e0b' };
-    return { level: 3, label: 'Strong', color: '#10b981' };
-  })();
+  const checks = [
+    { key: 'length', label: 'At least 8 characters', ok: form.password.length >= 8 },
+    { key: 'upper', label: 'One uppercase letter', ok: /[A-Z]/.test(form.password) },
+    { key: 'lower', label: 'One lowercase letter', ok: /[a-z]/.test(form.password) },
+    { key: 'number', label: 'One number', ok: /[0-9]/.test(form.password) },
+    { key: 'special', label: 'One symbol', ok: /[^A-Za-z0-9]/.test(form.password) },
+  ];
+  const passed = checks.filter((c) => c.ok).length;
+  const strength = !form.password
+    ? null
+    : passed <= 2
+      ? { label: 'Weak', tone: 'var(--error)', pct: 33 }
+      : passed <= 4
+        ? { label: 'Fair', tone: 'var(--warning)', pct: 66 }
+        : { label: 'Strong', tone: 'var(--success)', pct: 100 };
+
+  const passwordInput = (
+    id: string,
+    value: string,
+    onChange: (v: string) => void,
+    show: boolean,
+    setShow: (v: boolean) => void,
+    autoComplete: string,
+    placeholder: string,
+    error?: string
+  ) => (
+    <div className="relative">
+      <input
+        id={id}
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required
+        autoComplete={autoComplete}
+        placeholder={placeholder}
+        aria-invalid={error ? true : undefined}
+        className={`w-full h-11 pl-3 pr-12 rounded-sm bg-surface-raised border text-body text-content-primary placeholder:text-content-tertiary outline-none transition-colors duration-150 ${
+          error ? 'border-error focus-visible:border-error' : 'border-border-strong focus-visible:border-accent'
+        }`}
+      />
+      <button
+        type="button"
+        onClick={() => setShow(!show)}
+        aria-label={show ? 'Hide password' : 'Show password'}
+        className="absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 rounded-sm flex items-center justify-center text-content-tertiary hover:text-content-primary transition-colors"
+      >
+        {show ? <EyeOff size={18} strokeWidth={1.75} /> : <Eye size={18} strokeWidth={1.75} />}
+      </button>
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-600 text-[11px] font-semibold px-3 py-1.5 rounded-full border border-emerald-200 mb-5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          30-Day Free Trial — No Credit Card Required
-        </div>
-        <h1 className="font-display text-[2.2rem] font-black text-gray-900 leading-[1.1] mb-2">
-          Create your<br />free account
-        </h1>
-        <p className="text-gray-500 text-[15px]">
-          Already a member?{' '}
-          <Link href="/auth/login" className="text-[#F87404] font-semibold hover:text-[#e06000] transition-colors underline underline-offset-2">
-            Sign in here
+    <div className="flex flex-col gap-7">
+      <header className="flex flex-col gap-2">
+        <h1 className="font-display text-display text-content-primary">Create your account</h1>
+        <p className="text-body text-content-secondary">
+          Already have one?{' '}
+          <Link
+            href="/auth/login"
+            className="text-accent font-semibold underline underline-offset-2 hover:text-accent-hover"
+          >
+            Sign in
           </Link>
         </p>
-      </div>
+      </header>
 
-      {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {betaBlocked && (
+        <Alert tone="info" title="This is a private beta right now">
+          Google sign-up needs an invited email address. Register below with the exact address your invite was
+          sent to, or use Google again once your access is confirmed.
+        </Alert>
+      )}
 
-        {/* Full Name */}
-        <div className="space-y-1.5">
-          <label className="block text-sm font-semibold text-gray-700">Full Name</label>
-          <div className="relative group">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[#F87404] transition-colors">
-              <User size={16} />
-            </div>
-            <input
-              type="text"
-              placeholder="Kelvin Silas"
-              value={form.name}
-              onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-              required
-              autoComplete="name"
-              className={`w-full pl-11 pr-4 py-3.5 text-sm text-gray-900 placeholder-gray-400 bg-gray-50 border rounded-xl outline-none transition-all focus:bg-white focus:shadow-sm
-                ${errors.name ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100' : 'border-gray-200 focus:border-[#F87404] focus:ring-2 focus:ring-[#F87404]/15'}`}
-            />
-          </div>
-          {errors.name && <p className="text-xs text-red-500">⚠ {errors.name}</p>}
-        </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Input
+          label="Name"
+          placeholder="Your name"
+          value={form.name}
+          onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+          required
+          autoComplete="name"
+          error={errors.name}
+        />
 
-        {/* Email */}
-        <div className="space-y-1.5">
-          <label className="block text-sm font-semibold text-gray-700">Email Address</label>
-          <div className="relative group">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[#F87404] transition-colors">
-              <Mail size={16} />
-            </div>
-            <input
-              type="email"
-              placeholder="you@example.com"
-              value={form.email}
-              onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
-              required
-              autoComplete="email"
-              className={`w-full pl-11 pr-4 py-3.5 text-sm text-gray-900 placeholder-gray-400 bg-gray-50 border rounded-xl outline-none transition-all focus:bg-white focus:shadow-sm
-                ${errors.email ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100' : 'border-gray-200 focus:border-[#F87404] focus:ring-2 focus:ring-[#F87404]/15'}`}
-            />
-          </div>
-          {errors.email && <p className="text-xs text-red-500">⚠ {errors.email}</p>}
-        </div>
+        <Input
+          type="email"
+          label="Email"
+          placeholder="you@example.com"
+          value={form.email}
+          onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+          required
+          autoComplete="email"
+          error={errors.email}
+        />
 
-        {/* Password */}
-        <div className="space-y-1.5">
-          <label className="block text-sm font-semibold text-gray-700">Password</label>
-          <div className="relative group">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[#F87404] transition-colors">
-              <Lock size={16} />
-            </div>
-            <input
-              type={showPass ? 'text' : 'password'}
-              placeholder="Minimum 8 characters"
-              value={form.password}
-              onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-              required
-              autoComplete="new-password"
-              className={`w-full pl-11 pr-12 py-3.5 text-sm text-gray-900 placeholder-gray-400 bg-gray-50 border rounded-xl outline-none transition-all focus:bg-white focus:shadow-sm
-                ${errors.password ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100' : 'border-gray-200 focus:border-[#F87404] focus:ring-2 focus:ring-[#F87404]/15'}`}
-            />
-            <button type="button" onClick={() => setShowPass(v => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors">
-              {showPass ? <EyeOff size={17} /> : <Eye size={17} />}
-            </button>
-          </div>
-          {/* Password strength bar */}
-          {passwordStrength && (
-            <div className="flex items-center gap-2 mt-1.5">
-              <div className="flex gap-1 flex-1">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="h-1.5 flex-1 rounded-full transition-all" style={{
-                    backgroundColor: i <= passwordStrength.level ? passwordStrength.color : '#e5e7eb'
-                  }} />
-                ))}
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="reg-password" className="text-body-sm font-medium text-content-secondary">
+            Password
+          </label>
+          {passwordInput(
+            'reg-password',
+            form.password,
+            (v) => setForm((p) => ({ ...p, password: v })),
+            showPass,
+            setShowPass,
+            'new-password',
+            'At least 8 characters',
+            errors.password
+          )}
+
+          {/* Always rendered, never conditionally mounted.
+              This block used to appear only once a password had been typed,
+              which made the form 90px taller the instant you pressed a key.
+              The form column is vertically centred, so that growth re-centred
+              everything and the page lurched upward by 45px mid-keystroke —
+              it read as the screen zooming, and moved the field out from under
+              the cursor. Keeping it mounted holds the height constant, and
+              showing the rules before typing is better anyway: you learn the
+              requirements up front instead of being corrected afterwards. */}
+          <div className="flex flex-col gap-2 mt-1">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1 rounded-full bg-surface-sunken overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-[width] duration-200"
+                    style={{ width: strength ? `${strength.pct}%` : '0%', background: strength?.tone ?? 'transparent' }}
+                  />
+                </div>
+                {/* Fixed width so the bar does not jiggle as the word changes
+                    length between Weak / Fair / Strong. */}
+                {/* Non-breaking space when empty: an empty span contributes no
+                    line height, so the row would still grow ~12px on the first
+                    keystroke once the word appeared. */}
+                <span
+                  className="text-caption font-medium w-12 text-right shrink-0"
+                  style={{ color: strength?.tone ?? 'var(--content-tertiary)' }}
+                >
+                  {strength?.label ?? ' '}
+                </span>
               </div>
-              <span className="text-[11px] font-semibold" style={{ color: passwordStrength.color }}>{passwordStrength.label}</span>
-            </div>
-          )}
-          {errors.password && <p className="text-xs text-red-500">⚠ {errors.password}</p>}
-        </div>
-
-        {/* Confirm Password */}
-        <div className="space-y-1.5">
-          <label className="block text-sm font-semibold text-gray-700">Confirm Password</label>
-          <div className="relative group">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[#F87404] transition-colors">
-              <Lock size={16} />
-            </div>
-            <input
-              type={showConfirm ? 'text' : 'password'}
-              placeholder="Repeat your password"
-              value={form.password_confirmation}
-              onChange={e => setForm(p => ({ ...p, password_confirmation: e.target.value }))}
-              required
-              autoComplete="new-password"
-              className={`w-full pl-11 pr-12 py-3.5 text-sm text-gray-900 placeholder-gray-400 bg-gray-50 border rounded-xl outline-none transition-all focus:bg-white focus:shadow-sm
-                ${errors.password_confirmation ? 'border-red-300 focus:border-red-400 focus:ring-2 focus:ring-red-100' : 'border-gray-200 focus:border-[#F87404] focus:ring-2 focus:ring-[#F87404]/15'}`}
-            />
-            <button type="button" onClick={() => setShowConfirm(v => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition-colors">
-              {showConfirm ? <EyeOff size={17} /> : <Eye size={17} />}
-            </button>
+              <ul className="grid grid-cols-2 gap-x-3 gap-y-1">
+                {checks.map((c) => (
+                  <li
+                    key={c.key}
+                    className={`flex items-center gap-1.5 text-caption ${
+                      c.ok ? 'text-success' : 'text-content-tertiary'
+                    }`}
+                  >
+                    {c.ok ? (
+                      <Check size={12} strokeWidth={2.5} />
+                    ) : (
+                      <Minus size={12} strokeWidth={2} />
+                    )}
+                    {c.label}
+                  </li>
+                ))}
+              </ul>
           </div>
-          {errors.password_confirmation && <p className="text-xs text-red-500">⚠ {errors.password_confirmation}</p>}
+          {/* Reserved line so an error appearing does not shift the form either. */}
+          <p className="text-caption text-error min-h-4">{errors.password ?? ''}</p>
         </div>
 
-        {/* Trial perks summary */}
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { icon: '✓', text: 'Full access' },
-            { icon: '✓', text: 'No credit card' },
-            { icon: '✓', text: '30 days free' },
-          ].map(p => (
-            <div key={p.text} className="flex items-center gap-1.5 bg-[#F87404]/5 border border-[#F87404]/15 rounded-lg px-2.5 py-2">
-              <span className="text-[#F87404] font-bold text-xs">{p.icon}</span>
-              <span className="text-[11px] text-gray-600 font-medium">{p.text}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Submit */}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-[#F87404] hover:bg-[#e06000] active:scale-[0.99] text-white font-bold py-4 rounded-xl text-sm transition-all shadow-lg shadow-[#F87404]/25 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 group"
-        >
-          {loading ? (
-            <>
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Creating your account…
-            </>
-          ) : (
-            <>
-              Start My Free Trial
-              <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
-            </>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="reg-confirm" className="text-body-sm font-medium text-content-secondary">
+            Confirm password
+          </label>
+          {passwordInput(
+            'reg-confirm',
+            form.password_confirmation,
+            (v) => setForm((p) => ({ ...p, password_confirmation: v })),
+            showConfirm,
+            setShowConfirm,
+            'new-password',
+            'Re-enter your password',
+            errors.password_confirmation
           )}
-        </button>
+          <p className="text-caption text-error min-h-4">{errors.password_confirmation ?? ''}</p>
+        </div>
+
+        {errors.general && <Alert tone="error">{errors.general}</Alert>}
+
+        <Button
+          type="submit"
+          size="lg"
+          fullWidth
+          loading={loading}
+          iconRight={<ArrowRight size={16} strokeWidth={2} />}
+        >
+          {loading ? 'Creating account…' : 'Create account'}
+        </Button>
       </form>
 
-      {/* Footer */}
-      <p className="text-center text-xs text-gray-400 leading-relaxed">
-        By creating an account you agree to our{' '}
-        <Link href="/terms" className="text-[#F87404] hover:underline font-medium">Terms</Link>
-        {' '}and{' '}
-        <Link href="/privacy" className="text-[#F87404] hover:underline font-medium">Privacy Policy</Link>.
-        <br />Your trial starts immediately — cancel anytime.
+      <p className="text-center text-caption text-content-tertiary">
+        30 days free, no card required. By creating an account you agree to our{' '}
+        <Link href="/terms" className="text-accent hover:underline">Terms of Service</Link> and{' '}
+        <Link href="/privacy" className="text-accent hover:underline">Privacy Policy</Link>.
       </p>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense>
+      <RegisterForm />
+    </Suspense>
   );
 }

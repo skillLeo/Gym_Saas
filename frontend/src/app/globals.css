@@ -2,62 +2,359 @@
 
 @variant dark (&:is(.dark, .dark *));
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   MY EXTREME TRAINER — DESIGN SYSTEM
+   Stage 1 foundation. Every value below is a token. Components must never
+   hardcode a hex value; they reference these.
+
+   Theme resolution order (§1.2 of PHASE_8-10_BUILD_BRIEF.md):
+     1. :root                                  → light defaults
+     2. @media (prefers-color-scheme: dark)    → OS preference
+     3. :root.dark / :root.light               → manual toggle, wins over OS
+   The manual selectors are declared AFTER the media query and carry equal
+   specificity (0,2,0), so source order lets them win in BOTH directions.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-brand-blue: #0000FF;
-  --color-brand-orange: #F87404;
-  --color-brand-red: #FF0404;
-  --color-brand-yellow: #FFC000;
-  --color-brand-green: #3FB950;
-  --color-brand-light-blue: #004AAD;
-  --color-nav-bg: #F87404;
-  --color-card-bg: #ffffff;
-  --color-border: #E5E7EB;
+  /* — Surfaces & text (theme-reactive; resolved from the vars below) — */
+  --color-surface-base:   var(--surface-base);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-border-subtle:  var(--border-subtle);
+  --color-border-strong:  var(--border-strong);
+  --color-content-primary:   var(--text-primary);
+  --color-content-secondary: var(--text-secondary);
+  --color-content-tertiary:  var(--text-tertiary);
+
+  /* — Semantic state colors (theme-reactive) — */
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error:   var(--error);
+  --color-info:    var(--info);
+  --color-success-surface: var(--success-surface);
+  --color-warning-surface: var(--warning-surface);
+  --color-error-surface:   var(--error-surface);
+  --color-info-surface:    var(--info-surface);
+
+  /* — Brand (fixed; identical in both themes — client's exact hexes) — */
+  --color-brand-orange:      #F87404;
+  --color-brand-orange-deep: #FF5C04;
+  --color-brand-red:         #FF0404;
+  --color-brand-red-pure:    #FF0000;
+  --color-brand-yellow:      #FFC000;
+  --color-brand-blue:        #0000FF;
+  --color-brand-blue-deep:   #004AAD;
+
+  /* — Section accent (set per-section via [data-section]) — */
+  --color-accent:         var(--accent);
+  --color-accent-hover:   var(--accent-hover);
+  --color-accent-surface: var(--accent-surface);
+
+  /* — Owner accent: platform owner's posts/comments in notification feeds.
+       Distinct from every section accent and every semantic color (§5.7). — */
+  --color-owner-accent: var(--owner-accent);
+
+  /* — Calendar category colors (Cozi-inspired, 6 distinct hues) — */
+  --color-cat-1: var(--cat-1);
+  --color-cat-2: var(--cat-2);
+  --color-cat-3: var(--cat-3);
+  --color-cat-4: var(--cat-4);
+  --color-cat-5: var(--cat-5);
+  --color-cat-6: var(--cat-6);
+
+  /* — Radius scale (§1.4): applied by element role, never uniformly — */
+  --radius-xs:   6px;   /* chips, badges, tags          */
+  --radius-sm:   8px;   /* inputs, buttons, segmented   */
+  --radius-md:  12px;   /* cards, list rows, tiles      */
+  --radius-lg:  16px;   /* desktop modals, large panels */
+  --radius-xl:  24px;   /* bottom sheets (top corners)  */
+
+  /* — Type scale (§1.3): mobile-first — */
+  --text-display: 2rem;                        /* 32 */
+  --text-display--line-height: 2.25rem;        /* 36 */
+  --text-display--letter-spacing: -0.02em;
+  --text-h1: 1.625rem;                         /* 26 */
+  --text-h1--line-height: 2rem;                /* 32 */
+  --text-h1--letter-spacing: -0.015em;
+  --text-h2: 1.25rem;                          /* 20 */
+  --text-h2--line-height: 1.75rem;             /* 28 */
+  --text-h2--letter-spacing: -0.01em;
+  --text-h3: 1.0625rem;                        /* 17 */
+  --text-h3--line-height: 1.5rem;              /* 24 */
+  --text-h3--letter-spacing: -0.005em;
+  --text-body-lg: 1rem;                        /* 16 */
+  --text-body-lg--line-height: 1.5rem;         /* 24 */
+  --text-body: 0.9375rem;                      /* 15 */
+  --text-body--line-height: 1.375rem;          /* 22 */
+  --text-body-sm: 0.8125rem;                   /* 13 */
+  --text-body-sm--line-height: 1.125rem;       /* 18 */
+  --text-caption: 0.75rem;                     /* 12 */
+  --text-caption--line-height: 1rem;           /* 16 */
+  --text-caption--letter-spacing: 0.01em;
+  --text-overline: 0.6875rem;                  /* 11 */
+  --text-overline--line-height: 0.875rem;      /* 14 */
+  --text-overline--letter-spacing: 0.06em;
+
+  /* — Font families — */
+  --font-sans:    var(--font-inter), 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Posey Textured', var(--font-display-fallback), 'Archivo Black', system-ui, sans-serif;
+
+  /* — Elevation (§1.4): rare and meaningful. Default separator is a border. — */
+  --shadow-e1: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-e2: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-e3: 0 8px 28px rgba(0, 0, 0, 0.12);
+
+  /* — Motion (§1.4): fast, functional, never decorative — */
+  --ease-out-std: cubic-bezier(0, 0, 0.2, 1);
+  --ease-sheet:   cubic-bezier(0.2, 0, 0, 1);
 }
 
+/* ─────────────────────────── LIGHT (default) ─────────────────────────── */
 :root {
-  --background: #F8F9FA;
-  --foreground: #111827;
-  --bg-primary: #F8F9FA;
-  --bg-secondary: #ffffff;
-  --bg-card: #ffffff;
-  --blue: #0000FF;
-  --orange: #F87404;
-  --red: #FF0404;
-  --yellow: #FFC000;
-  --green: #3FB950;
-  --light-blue: #004AAD;
-  --text-primary: #111827;
-  --text-secondary: #6B7280;
-  --text-muted: #9CA3AF;
-  --border: #E5E7EB;
+  /* Warm-biased neutrals — a slight hue lean toward the orange accent so the
+     greys read as chosen rather than inherited. */
+  --surface-base:   #FAFAF9;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #F5F4F2;
+  --border-subtle:  #E8E6E3;
+  --border-strong:  #D6D3CE;
+  --text-primary:   #1C1917;
+  --text-secondary: #57534E;
+  --text-tertiary:  #78716C;  /* 4.6:1 on --surface-base — passes AA */
+
+  /* Semantic: deliberately distinct from brand. Brand red (#FF0404) is the
+     Fitness *section accent*; error red is a *state*. Never interchangeable.
+     Every semantic state must also carry an icon + label — never color alone. */
+  --success: #15803D;
+  --warning: #A16207;
+  --error:   #B91C1C;
+  --info:    #1D4ED8;
+  --success-surface: #F0FDF4;
+  --warning-surface: #FEFCE8;
+  --error-surface:   #FEF2F2;
+  --info-surface:    #EFF6FF;
+
+  /* Default section accent = brand orange (overridden per section below) */
+  --accent:         #F87404;
+  --accent-hover:   #FF5C04;
+  --accent-surface: #FFF4EC;
+
+  --owner-accent: #7C3AED;   /* violet — distinct from all brand + semantic */
+
+  --cat-1: #F87404;  /* orange  */
+  --cat-2: #004AAD;  /* blue    */
+  --cat-3: #15803D;  /* green   */
+  --cat-4: #7C3AED;  /* violet  */
+  --cat-5: #BE185D;  /* magenta */
+  --cat-6: #0E7490;  /* teal    */
+
 }
 
-.dark {
-  --background: #111827;
-  --foreground: #F9FAFB;
-  --bg-primary: #111827;
-  --bg-secondary: #1F2937;
-  --bg-card: #1F2937;
-  --text-primary: #F9FAFB;
-  --text-secondary: #D1D5DB;
-  --text-muted: #9CA3AF;
-  --border: #374151;
+/* ─────────────────────── OS PREFERENCE (dark) ─────────────────────── */
+/* Applies only when the user has NOT explicitly chosen light. */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --surface-base:   #0C0A09;
+    --surface-raised: #1A1817;
+    --surface-sunken: #050403;
+    --border-subtle:  #292524;
+    --border-strong:  #3A3532;
+    --text-primary:   #FAFAF9;
+    --text-secondary: #A8A29E;
+    --text-tertiary:  #8A827B;
+
+    --success: #22C55E;
+    --warning: #EAB308;
+    --error:   #F87171;
+    --info:    #60A5FA;
+    --success-surface: #0B2E1A;
+    --warning-surface: #2E2408;
+    --error-surface:   #2E1212;
+    --info-surface:    #0F1F3D;
+
+    --accent-surface: #2A1607;
+    --owner-accent: #A78BFA;
+
+    --cat-1: #FB923C;
+    --cat-2: #60A5FA;
+    --cat-3: #4ADE80;
+    --cat-4: #A78BFA;
+    --cat-5: #F472B6;
+    --cat-6: #22D3EE;
+
+    --green: #22C55E;
+  }
 }
 
+/* ───────────── MANUAL TOGGLE — wins over OS in both directions ───────────── */
+/* Declared after the media query with equal specificity (0,2,0). */
+:root.dark {
+  --surface-base:   #0C0A09;
+  --surface-raised: #1A1817;
+  --surface-sunken: #050403;
+  --border-subtle:  #292524;
+  --border-strong:  #3A3532;
+  --text-primary:   #FAFAF9;
+  --text-secondary: #A8A29E;
+  --text-tertiary:  #8A827B;
+
+  --success: #22C55E;
+  --warning: #EAB308;
+  --error:   #F87171;
+  --info:    #60A5FA;
+  --success-surface: #0B2E1A;
+  --warning-surface: #2E2408;
+  --error-surface:   #2E1212;
+  --info-surface:    #0F1F3D;
+
+  --accent-surface: #2A1607;
+  --owner-accent: #A78BFA;
+
+  --cat-1: #FB923C;
+  --cat-2: #60A5FA;
+  --cat-3: #4ADE80;
+  --cat-4: #A78BFA;
+  --cat-5: #F472B6;
+  --cat-6: #22D3EE;
+
+  --green: #22C55E;
+}
+
+:root.light {
+  --surface-base:   #FAFAF9;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #F5F4F2;
+  --border-subtle:  #E8E6E3;
+  --border-strong:  #D6D3CE;
+  --text-primary:   #1C1917;
+  --text-secondary: #57534E;
+  --text-tertiary:  #78716C;
+
+  --success: #15803D;
+  --warning: #A16207;
+  --error:   #B91C1C;
+  --info:    #1D4ED8;
+  --success-surface: #F0FDF4;
+  --warning-surface: #FEFCE8;
+  --error-surface:   #FEF2F2;
+  --info-surface:    #EFF6FF;
+
+  --accent-surface: #FFF4EC;
+  --owner-accent: #7C3AED;
+
+  --cat-1: #F87404;
+  --cat-2: #004AAD;
+  --cat-3: #15803D;
+  --cat-4: #7C3AED;
+  --cat-5: #BE185D;
+  --cat-6: #0E7490;
+
+  --green: #15803D;
+}
+
+/* ───────────────────────── SECTION ACCENTS (§1.2) ─────────────────────────
+   Surfaces stay neutral in every section; only the accent changes.
+   Applied via <div data-section="fitness"> on the section's layout. */
+[data-section="social"]     { --accent: #F87404; --accent-hover: #FF5C04; }
+[data-section="fitness"]    { --accent: #FF0404; --accent-hover: #FF0000; }
+[data-section="food"]       { --accent: #004AAD; --accent-hover: #003D8F; }
+[data-section="recipes"]    { --accent: #F87404; --accent-hover: #FF5C04; }
+[data-section="calendar"]   { --accent: #004AAD; --accent-hover: #003D8F; }
+[data-section="resources"]  { --accent: #004AAD; --accent-hover: #003D8F; }
+[data-section="membership"] { --accent: #F87404; --accent-hover: #FF5C04; }
+/* Coaching portal: deliberately institutional. No brand orange — it must be
+   immediately obvious this is a different product surface (§6.5.1). */
+[data-section="coaching"]   { --accent: #1D4ED8; --accent-hover: #1E40AF; }
+
+/* ─────────────────────────────── BASE ─────────────────────────────── */
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-dm-sans), 'Inter', system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
-/* ── Posey Textured Regular
-     Drop /public/fonts/Posey-Textured-Regular.woff2 to activate.
-     Falls back to Playfair Display until the file is present.        ── */
+body {
+  background: var(--surface-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  line-height: 1.375rem;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Never allow sideways page scroll (§2.4). Wide content scrolls inside its
+     own overflow-x container instead. */
+  overflow-x: hidden;
+}
+
+/* Native <select> dropdowns.
+   The popup list is drawn by the operating system, not by our CSS, and it
+   defaults to a white background. An <option> inherits the select's colour, so
+   in dark mode near-white text landed on the OS's white popup and was invisible
+   until the hover highlight painted behind it. Options must therefore carry
+   their own explicit background AND colour — styling the <select> alone is not
+   enough. `select` itself is included so a stray `bg-white` in markup cannot
+   reintroduce a white box with near-white text on it. */
+select {
+  background-color: var(--surface-sunken);
+  color: var(--content-primary);
+}
+
+select option {
+  background-color: var(--surface-raised);
+  color: var(--content-primary);
+}
+
+/* Placeholder option ("Select…") reads as secondary, like an input placeholder. */
+select option[value=''] {
+  color: var(--content-tertiary);
+}
+
+h1, h2, h3, h4 { text-wrap: balance; }
+p { text-wrap: pretty; }
+
+/* Visible keyboard focus everywhere — never remove without a replacement */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+/* A clicked text field must not light up.
+
+   :focus-visible alone does not achieve this: the spec has browsers match it on
+   any focused text input, however focus arrived, so clicking a search box drew
+   the full accent outline. The focus-modality script in layout.tsx records how
+   focus last moved, and the outline is suppressed only for pointer focus on
+   controls that take typed input. Keyboard focus — the case the outline exists
+   for — is untouched, as is focus on buttons and links. */
+:root[data-focus-method='pointer'] :is(input, textarea, select, [contenteditable]):focus-visible {
+  outline: none;
+  /* Components also draw an accent ring with Tailwind's focus-visible:ring-*,
+     which lands for the same reason. The ring layer resolves its colour through
+     --tw-ring-color at paint time, so making that transparent removes the ring
+     while leaving any real box-shadow the control has (a card's own elevation)
+     untouched. */
+  --tw-ring-color: transparent;
+  --tw-ring-shadow: 0 0 #0000;
+}
+
+/* Composite fields — a bordered wrapper holding an icon button, the text
+   control and a send button (chat composers, the live-chat bar). The WRAPPER
+   already shows focus via focus-within:border-accent, so the control inside
+   must not draw the global ring as well: the two stacked into a second orange
+   outline around a box that was already outlined. The focus state is not
+   removed, only moved out to the wrapper. */
+.field-inset:focus-visible { outline: none; }
+
+/* We provide our own pressed states */
+button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
+
+/* ── Posey Textured (brand display face)
+      Drop /public/fonts/Posey-Textured-Regular.woff2 to activate — zero code
+      changes required. public/fonts/ is currently EMPTY; until the licensed
+      file arrives the stack falls through to Archivo Black.              ── */
 @font-face {
   font-family: 'Posey Textured';
   src: url('/fonts/Posey-Textured-Regular.woff2') format('woff2');
@@ -67,43 +364,85 @@ body {
 }
 
 .font-display {
-  font-family: 'Posey Textured', var(--font-display), 'Playfair Display', Georgia, serif;
+  font-family: var(--font-display);
+  font-weight: 400;
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-12px); }
-}
-.animate-float {
-  animation: float 3s ease-in-out infinite;
+/* ──────────────────────────── MOTION (§1.4) ──────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
+@keyframes sheet-in {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+/**
+ * Landing-hero entrance.
+ *
+ * The hero used to fade in from a React state flag (`heroLoaded`), which meant
+ * the headline, both call-to-action buttons and the trial badge sat at
+ * opacity:0 until hydration ran. Any hydration failure — a stale build
+ * manifest, a chunk 500, JS disabled — left the entire hero invisible over the
+ * background photo, with no error to explain it. Doing it in CSS means the
+ * content's resting state is VISIBLE and the animation is pure decoration.
+ */
+@keyframes hero-in {
+  from { opacity: 0; transform: translateY(2rem); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-hero-in {
+  animation: hero-in 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-in { animation: none; }
+}
+
+/* ──────────────────────────── UTILITIES ──────────────────────────── */
 @layer utilities {
-  .text-gradient {
-    background: linear-gradient(135deg, #0000FF, #F87404);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  .bg-gradient-brand {
-    background: linear-gradient(135deg, #0000FF, #F87404);
-  }
-  .card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-  }
-  .input-field {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    border-radius: 8px;
-    padding: 10px 14px;
-    width: 100%;
-    font-size: 14px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  .input-field:focus { border-color: var(--orange); }
-  .input-field::placeholder { color: var(--text-muted); }
+  /* Safe-area insets for the mobile app shell (§2.1) */
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+  .mb-safe { margin-bottom: env(safe-area-inset-bottom, 0px); }
+  .h-safe-bottom { height: env(safe-area-inset-bottom, 0px); }
+
+  /* Elevation ramp — in dark mode prefer a lighter surface over a shadow,
+     because shadows are near-invisible on #0C0A09 and only add noise. */
+  .elev-1 { box-shadow: var(--shadow-e1); }
+  .elev-2 { box-shadow: var(--shadow-e2); }
+  .elev-3 { box-shadow: var(--shadow-e3); }
+  .dark .elev-1, .dark .elev-2, .dark .elev-3 { box-shadow: none; }
+
+  /* Digits that line up in columns (stat tiles, tables, macro readouts) */
+  .tabular { font-variant-numeric: tabular-nums; }
+
+  /* Wide content scrolls inside itself, never the page body */
+  .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  .animate-sheet-in { animation: sheet-in 250ms var(--ease-sheet); }
+  .animate-fade-in  { animation: fade-in 200ms var(--ease-out-std); }
+  .animate-skeleton { animation: skeleton-pulse 1.6s ease-in-out infinite; }
+
+  /* Hide scrollbar but keep scrollability (tab strips, chip rows) */
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
 }
+
+/* The legacy compatibility layer (.card, .input-field, .text-gradient,
+   .bg-gradient-brand, .animate-float and the --bg-card/--border/--orange
+   aliases) was removed once every page had migrated to the primitives and
+   tokens. Verified zero remaining usages before deletion. */

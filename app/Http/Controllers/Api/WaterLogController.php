@@ -13,10 +13,10 @@ class WaterLogController extends Controller
             ->first();
         if (!$log) {
             try {
-                $log = WaterLog::create(['user_id' => $request->user()->id, 'logged_date' => $date, 'glasses_count' => 0]);
+                $log = WaterLog::create(['user_id' => $request->user()->id, 'logged_date' => $date, 'glasses_count' => 0, 'total_ounces' => 0]);
             } catch (\Exception $e) {
                 $log = WaterLog::where('user_id', $request->user()->id)->whereDate('logged_date', $date)->first()
-                    ?? new WaterLog(['user_id' => $request->user()->id, 'logged_date' => $date, 'glasses_count' => 0]);
+                    ?? new WaterLog(['user_id' => $request->user()->id, 'logged_date' => $date, 'glasses_count' => 0, 'total_ounces' => 0]);
             }
         }
         return $log;
@@ -31,25 +31,34 @@ class WaterLogController extends Controller
 
     public function increment(Request $request)
     {
+        $validated = $request->validate(['ounces' => 'nullable|numeric|min:1|max:16']);
+        $ounces = $validated['ounces'] ?? 8;
+
         $log = $this->getOrCreate($request, now()->toDateString());
-        $log->glasses_count = min(20, $log->glasses_count + 1);
+        $log->total_ounces   = min(320, $log->total_ounces + $ounces);
+        $log->glasses_count  = (int) round($log->total_ounces / 8);
         $log->save();
         return response()->json(['success' => true, 'data' => $log]);
     }
 
     public function decrement(Request $request)
     {
+        $validated = $request->validate(['ounces' => 'nullable|numeric|min:1|max:16']);
+        $ounces = $validated['ounces'] ?? 8;
+
         $log = $this->getOrCreate($request, now()->toDateString());
-        $log->glasses_count = max(0, $log->glasses_count - 1);
+        $log->total_ounces  = max(0, $log->total_ounces - $ounces);
+        $log->glasses_count = (int) round($log->total_ounces / 8);
         $log->save();
         return response()->json(['success' => true, 'data' => $log]);
     }
 
     public function update(Request $request)
     {
-        $request->validate(['glasses_count' => 'required|integer|min:0|max:20']);
+        $request->validate(['total_ounces' => 'required|integer|min:0|max:320']);
         $log = $this->getOrCreate($request, now()->toDateString());
-        $log->glasses_count = $request->glasses_count;
+        $log->total_ounces  = $request->total_ounces;
+        $log->glasses_count = (int) round($request->total_ounces / 8);
         $log->save();
         return response()->json(['success' => true, 'data' => $log]);
     }

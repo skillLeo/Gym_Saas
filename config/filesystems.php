@@ -47,6 +47,23 @@ return [
             'report' => false,
         ],
 
+        /*
+         * Resources library (§5.3).
+         *
+         * Deliberately has NO `url` key and NO public visibility: there is no
+         * web-reachable path to these files at all. Every read goes through
+         * ResourceController, which checks authentication and publication state
+         * first. `storage:link` does not expose this directory, so a resource
+         * cannot be reached by guessing a filename.
+         */
+        'resources' => [
+            'driver' => 'local',
+            'root' => storage_path('app/resources'),
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

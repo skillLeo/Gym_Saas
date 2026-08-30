@@ -1,47 +1,89 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import toast from 'react-hot-toast';
+import { ArrowLeft, MailCheck } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Input } from '@/components/ui/Field';
+import { Alert } from '@/components/ui/States';
+import api from '@/lib/api';
+import { getErrorMessage } from '@/lib/errors';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
-    await new Promise(r => setTimeout(r, 900));
-    setLoading(false);
-    setSent(true);
-    toast.success('Password reset link sent!');
+    try {
+      await api.post('/auth/forgot-password', { email });
+      setSent(true);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not send the reset link. Please try again.'));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (sent) return (
-    <div className="text-center">
-      <div className="w-16 h-16 bg-[#3FB950]/20 rounded-full flex items-center justify-center mx-auto mb-4">
-        <span className="text-3xl">✉️</span>
+  if (sent) {
+    return (
+      <div className="flex flex-col items-center text-center gap-4">
+        <div className="h-14 w-14 rounded-full bg-success-surface text-success flex items-center justify-center">
+          <MailCheck size={26} strokeWidth={1.75} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <h1 className="font-display text-h1 text-content-primary">Check your inbox</h1>
+          <p className="text-body text-content-secondary text-pretty">
+            If an account exists for{' '}
+            <strong className="text-content-primary">{email}</strong>, a reset link is on its way.
+          </p>
+        </div>
+        <Link
+          href="/auth/login"
+          className="inline-flex items-center gap-1.5 text-body-sm font-medium text-accent hover:text-accent-hover"
+        >
+          <ArrowLeft size={14} strokeWidth={2} />
+          Back to sign in
+        </Link>
       </div>
-      <h2 className="text-xl font-bold text-gray-900 mb-2">Check your inbox</h2>
-      <p className="text-gray-500 text-sm mb-6">We sent a password reset link to <strong className="text-gray-900">{email}</strong></p>
-      <Link href="/auth/login" className="text-[#F87404] text-sm hover:underline">← Back to login</Link>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">Reset password</h2>
-      <p className="text-gray-500 mb-8">Enter your email and we'll send you a reset link.</p>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <Input label="Email" type="email" placeholder="you@example.com" value={email}
-          onChange={e => setEmail(e.target.value)} required />
-        <Button type="submit" loading={loading} className="w-full" size="lg">Send Reset Link</Button>
+    <div className="flex flex-col gap-7">
+      <header className="flex flex-col gap-2">
+        <h1 className="font-display text-display text-content-primary">Reset password</h1>
+        <p className="text-body text-content-secondary">
+          Enter your email and we&rsquo;ll send you a link to set a new one.
+        </p>
+      </header>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Input
+          label="Email"
+          type="email"
+          placeholder="you@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          autoComplete="email"
+        />
+        {error && <Alert tone="error">{error}</Alert>}
+        <Button type="submit" size="lg" fullWidth loading={loading}>
+          {loading ? 'Sending…' : 'Send reset link'}
+        </Button>
       </form>
-      <div className="mt-6 text-center">
-        <Link href="/auth/login" className="text-sm text-gray-500 hover:text-gray-900 transition-colors">← Back to login</Link>
-      </div>
+
+      <Link
+        href="/auth/login"
+        className="inline-flex items-center justify-center gap-1.5 text-body-sm text-content-secondary hover:text-content-primary"
+      >
+        <ArrowLeft size={14} strokeWidth={2} />
+        Back to sign in
+      </Link>
     </div>
   );
 }

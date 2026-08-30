@@ -1,232 +1,291 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useI18nStore } from '@/store/i18nStore';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { ChevronLeft, Camera, ImageIcon, Sparkles, Plus, CheckCircle, Edit3, RefreshCw } from 'lucide-react';
-import Link from 'next/link';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { FoodDbNotice, useFoodDbConnected } from '@/components/food/FoodDbNotice';
+import {
+  Camera, ImageIcon, Sparkles, Plus, CheckCircle, Edit3,
+  RefreshCw, Loader2, AlertCircle,
+} from 'lucide-react';
+import api from '@/lib/api';
+import toast from 'react-hot-toast';
 
-const mockPhotoResult = {
-  detectedMeal: 'Grilled Chicken & Vegetables',
-  confidence: 94,
-  image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&h=400&fit=crop',
-  items: [
-    { name: 'Grilled Chicken Breast', calories: 220, protein: 42, carbs: 0, fat: 5, portion: '5 oz' },
-    { name: 'Roasted Broccoli', calories: 55, protein: 4, carbs: 11, fat: 1, portion: '1 cup' },
-    { name: 'Sweet Potato', calories: 103, protein: 2, carbs: 24, fat: 0, portion: 'medium' },
-  ],
-};
-
-const recentPhotos = [
-  { image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=200&h=200&fit=crop', meal: 'Lunch', calories: 485, items: 4, time: '12:30 PM' },
-  { image: 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=200&h=200&fit=crop', meal: 'Breakfast', calories: 320, items: 3, time: '7:15 AM' },
-  { image: 'https://images.unsplash.com/photo-1547592180-85f173990554?w=200&h=200&fit=crop', meal: 'Dinner', calories: 620, items: 5, time: 'Yesterday' },
-];
+interface FoodItem {
+  name: string; calories: number; protein_g: number; carbs_g: number; fat_g: number;
+  serving_qty: number; serving_unit: string; nutritionix_id: string | null;
+}
+interface MealSlot { id: number; name: string; sort_order: number }
 
 export default function PhotoLogPage() {
-  const [step, setStep] = useState<'capture' | 'analyzing' | 'result'>('capture');
-  const [selectedMeal, setSelectedMeal] = useState('lunch');
-  const [added, setAdded] = useState(false);
+  const { t } = useI18nStore();
+  // Hides the 'AI Powered' badge and the 'our AI will calculate the nutrition
+  // automatically' line when there is no food database behind them, so the page
+  // does not carry a warning and a contradicting promise at the same time.
+  const foodDbConnected = useFoodDbConnected();
+  const [photoPreview,  setPhotoPreview]  = useState<string | null>(null);
+  const [step,          setStep]          = useState<'capture' | 'describe' | 'result'>('capture');
+  const [description,   setDescription]  = useState('');
+  const [parsing,       setParsing]       = useState(false);
+  const [foodItems,     setFoodItems]     = useState<FoodItem[]>([]);
+  const [mealSlots,     setMealSlots]     = useState<MealSlot[]>([]);
+  const [selectedSlot,  setSelectedSlot]  = useState<number | null>(null);
+  const [loggedIds,     setLoggedIds]     = useState<Set<number>>(new Set());
+  const [loggingIdx,    setLoggingIdx]    = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleCapture = () => {
-    setStep('analyzing');
-    setTimeout(() => setStep('result'), 3000);
+  useEffect(() => {
+    api.get('/meal-slots').then(res => {
+      const slots = res.data.data ?? [];
+      setMealSlots(slots);
+      if (slots.length) setSelectedSlot(slots[0].id);
+    }).catch(() => {});
+  }, []);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setPhotoPreview(url);
+    setStep('describe');
   };
 
-  const handleAdd = () => {
-    setAdded(true);
-    setTimeout(() => { setAdded(false); setStep('capture'); }, 2000);
+  const parseDescription = async () => {
+    if (!description.trim()) { toast.error(t('photoLog.describe')); return; }
+    setParsing(true);
+    try {
+      const res = await api.post('/food/nlp', { query: description });
+      setFoodItems(res.data.data ?? []);
+      setStep('result');
+    } catch (err: any) {
+      if (err?.response?.status === 503) {
+        toast.error(t('foodLog.notConfigured'));
+      } else {
+        toast.error(t('photoLog.parseFailed'));
+      }
+    } finally {
+      setParsing(false);
+    }
   };
 
-  const totalCals = mockPhotoResult.items.reduce((s, i) => s + i.calories, 0);
-  const totalProtein = mockPhotoResult.items.reduce((s, i) => s + i.protein, 0);
-  const totalCarbs = mockPhotoResult.items.reduce((s, i) => s + i.carbs, 0);
-  const totalFat = mockPhotoResult.items.reduce((s, i) => s + i.fat, 0);
+  const logItem = async (item: FoodItem, idx: number) => {
+    if (!selectedSlot) { toast.error(t('foodLog.noSlot')); return; }
+    setLoggingIdx(idx);
+    try {
+      await api.post('/food-log/from-api', {
+        food_data: {
+          name:          item.name,
+          calories:      item.calories,
+          protein_g:     item.protein_g,
+          carbs_g:       item.carbs_g,
+          fat_g:         item.fat_g,
+          serving_qty:   item.serving_qty,
+          serving_unit:  item.serving_unit,
+          nutritionix_id: item.nutritionix_id,
+        },
+        meal_slot_id: selectedSlot,
+        logged_date:  new Date().toISOString().slice(0, 10),
+        servings:     1,
+      });
+      setLoggedIds(prev => new Set([...prev, idx]));
+      toast.success(`${item.name} logged!`);
+    } catch {
+      toast.error(t('foodLog.error.log'));
+    } finally {
+      setLoggingIdx(null);
+    }
+  };
+
+  const reset = () => {
+    setPhotoPreview(null);
+    setStep('capture');
+    setDescription('');
+    setFoodItems([]);
+    setLoggedIds(new Set());
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   return (
     <DashboardShell>
       <div className="max-w-md mx-auto px-4 py-6">
 
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/food-journal">
-            <button className="w-9 h-9 flex items-center justify-center rounded-xl bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-white/[0.07] hover:border-[#004AAD]/40 transition-colors">
-              <ChevronLeft size={18} className="text-gray-600 dark:text-gray-400" />
-            </button>
-          </Link>
-          <div>
-            <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-white">Photo Log</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">AI identifies your meal from a photo</p>
-          </div>
-        </div>
+        <PageHeader
+        title={t('photoLog.title')}
+        subtitle={t('photoLog.subtitle')}
+        back="/food-journal"
+      />
 
-        {/* AI Badge */}
-        <div className="flex items-center gap-2 bg-gradient-to-r from-[#004AAD]/10 to-[#F87404]/10 border border-[#004AAD]/20 rounded-2xl p-4 mb-5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#004AAD] to-[#F87404] flex items-center justify-center shrink-0">
-            <Sparkles size={16} className="text-white" />
-          </div>
-          <div>
-            <div className="text-sm font-semibold text-gray-900 dark:text-white">AI-Powered Recognition</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">Snap a photo and our AI estimates calories and macros automatically</div>
-          </div>
-        </div>
+      <FoodDbNotice />
 
+        {/* Hidden file input */}
+        <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
+          className="hidden" onChange={handleFileSelect} />
+
+        {/* Step 1: Capture */}
         {step === 'capture' && (
           <>
-            {/* Camera Preview */}
-            <div className="relative rounded-3xl overflow-hidden mb-5 bg-gray-900 aspect-square">
-              <img src="https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&h=500&fit=crop"
-                alt="Camera preview" className="w-full h-full object-cover opacity-60" />
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border-4 border-white/60 cursor-pointer hover:bg-white/30 transition-all" onClick={handleCapture}>
-                  <Camera size={28} className="text-white" />
-                </div>
-                <p className="text-white/80 text-sm">Tap to capture your meal</p>
+            <div className="relative rounded-md bg-gray-900 aspect-[4/3] flex flex-col items-center justify-center mb-5 overflow-hidden">
+              <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mb-3">
+                <Camera size={40} className="text-accent" />
               </div>
-              {/* Grid overlay */}
-              <div className="absolute inset-0 pointer-events-none" style={{
-                backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)',
-                backgroundSize: '33.33% 33.33%'
-              }} />
+              <p className="text-white/70 text-sm">{t('photoLog.prompt')}</p>
+              {foodDbConnected !== false && (
+                <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-black/40 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/20">
+                  <Sparkles size={12} className="text-brand-yellow" />
+                  <span className="text-white text-xs font-medium">{t('common.aiPowered')}</span>
+                </div>
+              )}
             </div>
 
-            <div className="flex gap-3 mb-6">
-              <Button onClick={handleCapture} fullWidth size="lg" icon={<Camera size={18} />}>
-                Take Photo
-              </Button>
-              <Button variant="outline" size="lg" icon={<ImageIcon size={18} />}>
-                Gallery
-              </Button>
+            <div className="flex gap-3 mb-5">
+              <button onClick={() => fileInputRef.current?.click()}
+                className="flex-1 flex items-center justify-center gap-2 py-4 rounded-md bg-accent text-white font-semibold hover:bg-accent-hover transition-colors">
+                <Camera size={20} /> {t('photoLog.take')}
+              </button>
+              <button onClick={() => { if (fileInputRef.current) { fileInputRef.current.removeAttribute('capture'); fileInputRef.current.click(); } }}
+                className="flex-1 flex items-center justify-center gap-2 py-4 rounded-md border-2 border-accent/30 text-accent font-semibold hover:border-accent hover:bg-accent/5 transition-all">
+                <ImageIcon size={20} /> {t('common.upload')}
+              </button>
+            </div>
+
+            {foodDbConnected !== false && (
+              <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-[#004AAD]/10 rounded-md border border-blue-200 dark:border-[#004AAD]/20">
+                <AlertCircle size={16} className="text-brand-blue-deep dark:text-blue-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-brand-blue-deep dark:text-blue-300 leading-relaxed">
+                  {t('photoLog.help')}
+                </p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Step 2: Describe */}
+        {step === 'describe' && (
+          <>
+            {photoPreview && (
+              <div className="relative rounded-md overflow-hidden aspect-[4/3] mb-5">
+                <img src={photoPreview} alt={t('photoLog.yourMeal')} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                <button onClick={reset}
+                  className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/60 transition-colors">
+                  <RefreshCw size={16} />
+                </button>
+                <div className="absolute bottom-3 left-3 bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full">
+                  <p className="text-white text-xs font-medium flex items-center gap-1.5">
+                    <Sparkles size={11} className="text-brand-yellow" /> {t('photoLog.ready')}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <Card className="mb-5">
+              <div className="p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Edit3 size={16} className="text-accent" />
+                  <p className="font-semibold text-content-primary text-sm">{t('photoLog.whatDoYouSee')}</p>
+                </div>
+                <textarea
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  rows={3}
+                  autoFocus
+                  placeholder={t('photoLog.example')}
+                  className="w-full px-3 py-2.5 rounded-md border border-border-strong bg-surface-sunken text-content-primary text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 resize-none"
+                />
+                <p className="text-xs text-content-tertiary mt-2">{t('photoLog.describeHint')}</p>
+                <button onClick={parseDescription} disabled={parsing || !description.trim()}
+                  className="w-full mt-3 flex items-center justify-center gap-2 py-3 rounded-md bg-accent text-white text-sm font-semibold hover:bg-accent-hover transition-colors disabled:opacity-60">
+                  {parsing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                  {parsing ? t('photoLog.calculating') : t('photoLog.calculate')}
+                </button>
+              </div>
+            </Card>
+          </>
+        )}
+
+        {/* Step 3: Result */}
+        {step === 'result' && (
+          <>
+            {photoPreview && (
+              <div className="relative rounded-md overflow-hidden h-40 mb-5">
+                <img src={photoPreview} alt={t('photoLog.yourMeal')} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                <div className="absolute bottom-3 left-3 right-3">
+                  <p className="text-white text-xs text-sm font-medium line-clamp-1">{description}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between mb-3">
+              <p className="font-semibold text-content-primary text-sm">{foodItems.length} item{foodItems.length !== 1 ? 's' : ''} found</p>
+              <div className="flex gap-1 flex-wrap justify-end">
+                {mealSlots.map(m => (
+                  <button key={m.id} onClick={() => setSelectedSlot(m.id)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${selectedSlot === m.id ? 'bg-accent text-white' : 'bg-surface-sunken text-content-secondary'}`}>
+                    {m.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {foodItems.length === 0 ? (
+              <div className="flex items-center gap-3 p-4 bg-yellow-50 dark:bg-yellow-500/10 rounded-md border border-yellow-200 dark:border-yellow-500/20 mb-5">
+                <AlertCircle size={18} className="text-yellow-500 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-yellow-700 dark:text-yellow-400">{t('photoLog.noItems')}</p>
+                  <p className="text-xs text-yellow-600/80 dark:text-yellow-400/70 mt-0.5">{t('photoLog.tryDetail')}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 mb-5">
+                {foodItems.map((item, idx) => (
+                  <Card key={idx}>
+                    <div className="p-4 flex items-center gap-3">
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-content-primary">{item.name}</p>
+                        <p className="text-xs text-content-tertiary mt-0.5">{item.serving_qty} {item.serving_unit}</p>
+                        <div className="flex gap-3 mt-1.5 text-xs">
+                          <span className="text-accent font-bold">{item.calories} kcal</span>
+                          <span className="text-content-tertiary">{item.protein_g}g protein</span>
+                          <span className="text-content-tertiary">{item.carbs_g}g carbs</span>
+                          <span className="text-content-tertiary">{item.fat_g}g fat</span>
+                        </div>
+                      </div>
+                      {loggedIds.has(idx) ? (
+                        <div className="w-9 h-9 rounded-full bg-green-100 dark:bg-green-500/20 flex items-center justify-center">
+                          <CheckCircle size={18} className="text-green-500" />
+                        </div>
+                      ) : (
+                        <button onClick={() => logItem(item, idx)} disabled={loggingIdx === idx}
+                          className="w-9 h-9 rounded-full bg-accent flex items-center justify-center hover:bg-accent-hover transition-colors disabled:opacity-60">
+                          {loggingIdx === idx
+                            ? <Loader2 size={16} className="text-white animate-spin" />
+                            : <Plus size={18} className="text-white" />}
+                        </button>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button onClick={() => { setStep('describe'); setFoodItems([]); setLoggedIds(new Set()); }}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md border border-border-strong text-sm text-content-secondary hover:bg-gray-50 dark:hover:bg-white/[0.05] transition-colors">
+                <Edit3 size={15} /> {t('photoLog.editDesc')}
+              </button>
+              <button onClick={reset}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-md border border-border-strong text-sm text-content-secondary hover:bg-gray-50 dark:hover:bg-white/[0.05] transition-colors">
+                <Camera size={15} /> {t('photoLog.new')}
+              </button>
             </div>
           </>
         )}
 
-        {step === 'analyzing' && (
-          <div className="rounded-3xl overflow-hidden mb-5 bg-gray-900 aspect-square relative">
-            <img src={mockPhotoResult.image} alt="Analyzing" className="w-full h-full object-cover opacity-50" />
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className="relative w-20 h-20 mb-4">
-                <div className="absolute inset-0 rounded-full border-4 border-[#F87404]/30 animate-ping" />
-                <div className="absolute inset-0 rounded-full border-4 border-[#F87404]/60 border-t-[#F87404] animate-spin" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Sparkles size={24} className="text-[#F87404]" />
-                </div>
-              </div>
-              <p className="text-white font-semibold text-lg">Analyzing your meal...</p>
-              <p className="text-white/60 text-sm mt-1">AI is identifying food items</p>
-              <div className="flex gap-1 mt-4">
-                {[0, 1, 2].map(i => (
-                  <div key={i} className="w-2 h-2 rounded-full bg-[#F87404] animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {step === 'result' && (
-          <Card className="mb-5">
-            <div className="p-5">
-              {/* Photo */}
-              <div className="relative rounded-2xl overflow-hidden mb-4 aspect-video">
-                <img src={mockPhotoResult.image} alt={mockPhotoResult.detectedMeal} className="w-full h-full object-cover" />
-                <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/50 backdrop-blur-sm px-2.5 py-1 rounded-full">
-                  <Sparkles size={12} className="text-[#FFC000]" />
-                  <span className="text-white text-xs font-medium">{mockPhotoResult.confidence}% confident</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white">{mockPhotoResult.detectedMeal}</h3>
-                  <p className="text-xs text-gray-400">{mockPhotoResult.items.length} items detected</p>
-                </div>
-                <button className="flex items-center gap-1.5 text-xs text-[#F87404] font-medium hover:underline">
-                  <Edit3 size={13} /> Edit
-                </button>
-              </div>
-
-              {/* Nutrition summary */}
-              <div className="grid grid-cols-4 gap-2 mb-4">
-                {[
-                  { label: 'Calories', val: totalCals, unit: '', color: '#F87404' },
-                  { label: 'Protein', val: totalProtein, unit: 'g', color: '#F87404' },
-                  { label: 'Carbs', val: totalCarbs, unit: 'g', color: '#004AAD' },
-                  { label: 'Fat', val: totalFat, unit: 'g', color: '#7C3AED' },
-                ].map(({ label, val, unit, color }) => (
-                  <div key={label} className="bg-gray-50 dark:bg-white/[0.05] rounded-xl p-2.5 text-center">
-                    <div className="font-bold text-sm" style={{ color }}>{val}{unit}</div>
-                    <div className="text-xs text-gray-400">{label}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Item breakdown */}
-              <div className="space-y-2 mb-4">
-                {mockPhotoResult.items.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-white/[0.05] last:border-0">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">{item.name}</div>
-                      <div className="text-xs text-gray-400">{item.portion} · P: {item.protein}g · C: {item.carbs}g · F: {item.fat}g</div>
-                    </div>
-                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{item.calories} kcal</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Meal selector */}
-              <div className="mb-4">
-                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 block">Add to meal</label>
-                <div className="grid grid-cols-4 gap-2">
-                  {['breakfast', 'lunch', 'dinner', 'snacks'].map(m => (
-                    <button key={m} onClick={() => setSelectedMeal(m)}
-                      className={`py-2 rounded-xl text-xs font-medium capitalize transition-all ${selectedMeal === m ? 'bg-[#F87404] text-white' : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-400'}`}>
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {added ? (
-                <div className="flex items-center justify-center gap-2 py-3 bg-green-50 dark:bg-green-500/10 rounded-xl text-green-600 dark:text-green-400 text-sm font-medium">
-                  <CheckCircle size={16} />
-                  Added to {selectedMeal}!
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <Button onClick={handleAdd} fullWidth icon={<Plus size={16} />} size="md">
-                    Log Meal
-                  </Button>
-                  <Button variant="outline" size="md" icon={<RefreshCw size={15} />} onClick={() => setStep('capture')}>
-                    Retake
-                  </Button>
-                </div>
-              )}
-            </div>
-          </Card>
-        )}
-
-        {/* Recent Photos */}
-        {step === 'capture' && (
-          <div>
-            <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-3">Recent Photo Logs</h3>
-            <div className="grid grid-cols-3 gap-3">
-              {recentPhotos.map((p) => (
-                <div key={p.time} className="relative rounded-2xl overflow-hidden aspect-square cursor-pointer group">
-                  <img src={p.image} alt={p.meal} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-2">
-                    <div className="text-white text-xs font-semibold">{p.meal}</div>
-                    <div className="text-white/70 text-[10px]">{p.calories} kcal</div>
-                  </div>
-                  <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded-full">
-                    <span className="text-white text-[9px]">{p.time}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <div className="h-16" />
       </div>
     </DashboardShell>
   );

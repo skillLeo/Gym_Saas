@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Physician;
 use App\Models\User;
 
 return [
@@ -42,6 +43,24 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // Explicit `provider` (previously absent, so Sanctum's own registration
+        // left it `null` — meaning any tokenable model was accepted here). Pinning
+        // it to `users` makes Sanctum's Guard::hasValidProvider() reject a
+        // Physician's token on every member route without touching a single
+        // controller (§6.5.1 — a physician must never authenticate as a member).
+        'sanctum' => [
+            'driver' => 'sanctum',
+            'provider' => 'users',
+        ],
+
+        // Coaching portal (§6.5.1). Completely separate guard + provider, so a
+        // member's Sanctum token is symmetrically rejected here — same
+        // `hasValidProvider()` mechanism, just checking the opposite model.
+        'physician' => [
+            'driver' => 'sanctum',
+            'provider' => 'physicians',
+        ],
     ],
 
     /*
@@ -71,6 +90,11 @@ return [
         //     'driver' => 'database',
         //     'table' => 'users',
         // ],
+
+        'physicians' => [
+            'driver' => 'eloquent',
+            'model' => Physician::class,
+        ],
     ],
 
     /*
