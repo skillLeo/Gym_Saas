@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# The production API origin is NOT a secret: NEXT_PUBLIC_* values are compiled
+# into the JavaScript bundle every visitor downloads. Keeping it out of the repo
+# only meant CI had nothing to build with, and the deploy failed on a missing
+# GitHub secret. Committed so a build is self-sufficient.
+!.env.production

@@ -41,23 +41,30 @@ jobs:
       - name: Build Next.js
         working-directory: frontend
         env:
-          # Inlined into the bundle at BUILD time. If this secret is unset the
-          # build silently produces a frontend that talks to nothing, so fail
-          # loudly instead.
+          # Optional override. The committed frontend/.env.production already
+          # carries the right value, so a deploy does not depend on this secret
+          # existing — an earlier version required it, and the whole pipeline
+          # failed at this step because it was never set.
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
         run: |
           set -e
-          if [ -z "$NEXT_PUBLIC_API_URL" ]; then
-            echo "NEXT_PUBLIC_API_URL secret is not set — refusing to ship a build that points nowhere."
-            exit 1
-          fi
           npm run build
-          echo "--- verifying the API origin was baked in ---"
-          grep -rl "$NEXT_PUBLIC_API_URL" .next/static/chunks/ | head -3
-          if grep -rql "localhost:8001" .next/static/chunks/; then
-            echo "Build contains localhost references — aborting."
+
+          # Verify the ARTEFACT, not the configuration. NEXT_PUBLIC_* values are
+          # inlined at build time, so the only thing that matters is what ended
+          # up in the bundle — whichever source it came from. Checking the input
+          # instead is what made this step fail while the build itself was fine.
+          echo "--- verifying the compiled bundle ---"
+          if grep -rql "localhost:" .next/static/chunks/; then
+            echo "FAIL: the bundle still points at localhost."
+            grep -rl "localhost:" .next/static/chunks/ | head -3
             exit 1
           fi
+          if ! grep -rql "gyms.skillleo.com" .next/static/chunks/; then
+            echo "FAIL: the production API origin is not in the bundle — it would call nothing."
+            exit 1
+          fi
+          echo "OK: bundle targets gyms.skillleo.com, no localhost references."
 
       # `.next/cache` and `.next/dev` are build/dev scratch space, not runtime
       # artefacts — 3.2GB of the former on a local build. Ship neither.
@@ -122,8 +129,22 @@ jobs:
 
             echo "==> Unpacking the frontend build..."
             cd $APP/frontend
-            rm -rf .next
-            tar xzf /home/u290685119/next-build.tar.gz -C $APP/frontend
+            # Unpack beside the live build and only swap once the new one is
+            # verified. The previous version deleted .next BEFORE extracting, so
+            # a truncated or missing tarball would have left the site with no
+            # frontend at all and no way back without another deploy.
+            rm -rf .next.incoming
+            mkdir -p .next.incoming
+            tar xzf /home/u290685119/next-build.tar.gz -C .next.incoming
+            if [ ! -f .next.incoming/.next/BUILD_ID ]; then
+              echo "FAIL: unpacked build has no BUILD_ID — keeping the current one."
+              rm -rf .next.incoming
+              exit 1
+            fi
+            rm -rf .next.old
+            [ -d .next ] && mv .next .next.old
+            mv .next.incoming/.next .next
+            rm -rf .next.incoming .next.old
             # next-static is a plain COPY of .next/static served straight off
             # disk by .htaccess. It MUST be refreshed on every deploy: each
             # build produces new content-hashed chunk filenames, and a stale
