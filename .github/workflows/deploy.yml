@@ -41,13 +41,27 @@ jobs:
       - name: Build Next.js
         working-directory: frontend
         env:
-          # Optional override. The committed frontend/.env.production already
-          # carries the right value, so a deploy does not depend on this secret
-          # existing — an earlier version required it, and the whole pipeline
-          # failed at this step because it was never set.
-          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+          # Deliberately NOT named NEXT_PUBLIC_API_URL.
+          #
+          # An unset secret expands to an empty string, and GitHub still puts the
+          # variable into the environment. Next's env loader skips any key
+          # already present in process.env — an empty value counts as present —
+          # so `.env.production` was ignored and the bundle was built with no API
+          # origin at all. Verified locally: `NEXT_PUBLIC_API_URL="" npm run
+          # build` exits 0 and produces zero chunks containing the domain. That
+          # is what failed this step twice, with a green build underneath it.
+          #
+          # Exported below only when actually set, so an absent secret leaves the
+          # committed file in charge.
+          API_URL_OVERRIDE: ${{ secrets.NEXT_PUBLIC_API_URL }}
         run: |
           set -e
+          if [ -n "$API_URL_OVERRIDE" ]; then
+            export NEXT_PUBLIC_API_URL="$API_URL_OVERRIDE"
+            echo "using the NEXT_PUBLIC_API_URL secret"
+          else
+            echo "no secret set — using frontend/.env.production"
+          fi
           npm run build
 
           # Verify the ARTEFACT, not the configuration. NEXT_PUBLIC_* values are
