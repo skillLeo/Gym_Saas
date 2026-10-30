@@ -42,6 +42,8 @@ return Application::configure(basePath: dirname(__DIR__))
             // The mirror of 'admin': keeps staff out of member-only features.
             'member'          => \App\Http\Middleware\DenyAdminMemberFeature::class,
             'physician.active'=> \App\Http\Middleware\EnsurePhysicianActive::class,
+            // Flag + consent + spend limits for the AI features.
+            'ai.access'       => \App\Http\Middleware\EnsureAiAccess::class,
         ]);
         $middleware->validateCsrfTokens(except: ['api/*']);
     })

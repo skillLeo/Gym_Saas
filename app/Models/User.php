@@ -13,13 +13,26 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
 
+    /**
+     * A column default lives in the database, so a freshly created model holds
+     * null for it until something reloads the row. For an access flag that is
+     * the wrong shape to hand out: AiGate reads null as falsey and refuses
+     * correctly, but /api/ai/status would serialise `null` instead of `false`,
+     * and any future `=== false` check would quietly not match. Declaring the
+     * default here makes the attribute a real boolean from the moment the
+     * model exists.
+     */
+    protected $attributes = [
+        'ai_features_enabled' => false,
+    ];
+
     protected $fillable = [
         'name', 'username', 'email', 'google_id', 'password', 'avatar', 'bio', 'date_of_birth', 'gender',
         'height_cm', 'current_weight_kg', 'goal_weight_kg', 'activity_level',
         'primary_goal', 'daily_calorie_goal', 'daily_protein_goal_g',
         'daily_carbs_goal_g', 'daily_fat_goal_g', 'daily_water_goal_glasses',
         'nickname', 'alternate_names',
-        'email_notifications', 'billboard',
+        'email_notifications', 'billboard', 'locale',
         'trial_starts_at', 'trial_ends_at', 'trial_reminder_sent',
         'onboarding_completed',
         // Deliberately NOT fillable — these decide access and money, so they must
@@ -31,6 +44,11 @@ class User extends Authenticatable
         //   deactivated_at        — UserAccountState service ONLY
         //   scheduled_deletion_at — UserAccountState service ONLY
         //   stripe_customer_id    — SubscriptionController / StripeWebhookController
+        //   ai_features_enabled   — AdminController only. It decides who can spend
+        //                           the client's money on AI calls, so it belongs with
+        //                           is_admin, not with the profile fields.
+        //   ai_consent_at         — AiConsentController only. Set from the member's own
+        //   ai_consent_version      explicit action; never mass-assigned.
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -52,6 +70,8 @@ class User extends Authenticatable
             'muted_notification_categories' => 'array',
             'deactivated_at'         => 'datetime',
             'scheduled_deletion_at'  => 'datetime',
+            'ai_features_enabled'    => 'boolean',
+            'ai_consent_at'          => 'datetime',
         ];
     }
 

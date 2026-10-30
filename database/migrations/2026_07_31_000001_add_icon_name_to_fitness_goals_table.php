@@ -65,10 +65,20 @@ return new class extends Migration
         // every emoji row — each iteration then overwrites the last and every
         // goal ends up with whichever mapping ran last. Verified: without the
         // binary collation, 💪/🏃/🧘/🦄 all resolved to 'trending-down'.
+        //
+        // SQLite compares TEXT byte-for-byte already and has no utf8mb4_bin, so
+        // naming it there aborts the whole migration run with "no such collation
+        // sequence" — which is what blocked the test suite from booting at all.
+        // The comparison must therefore be built per driver: the collation is
+        // still applied on MySQL, where it is load-bearing.
+        $binary = DB::connection()->getDriverName() === 'mysql'
+            ? fn (string $column, string $value) => DB::table('fitness_goals')
+                ->whereRaw("{$column} COLLATE utf8mb4_bin = ?", [$value])
+            : fn (string $column, string $value) => DB::table('fitness_goals')
+                ->where($column, $value);
+
         foreach (self::EMOJI_TO_ICON as $emoji => $icon) {
-            DB::table('fitness_goals')
-                ->whereRaw('emoji COLLATE utf8mb4_bin = ?', [$emoji])
-                ->update(['icon_name' => $icon]);
+            $binary('emoji', $emoji)->update(['icon_name' => $icon]);
         }
 
         DB::table('fitness_goals')

@@ -37,8 +37,23 @@ return new class extends Migration
         DB::statement('ALTER TABLE `messages` DROP INDEX `' . self::INDEX . '`');
     }
 
+    /**
+     * FULLTEXT and SHOW INDEX are both MySQL-only. SQLite has neither, so the
+     * statement below is not merely unsupported there — `SHOW INDEX` is a
+     * syntax error that aborts the entire migration run, which is what stopped
+     * the test suite (sqlite :memory:) from booting at all.
+     *
+     * Reporting "already exists" off MySQL skips the index cleanly. Message
+     * search is a MySQL feature of this application; the tests do not exercise
+     * it, and silently having no FULLTEXT index on sqlite is correct rather
+     * than a gap, because nothing on sqlite can use one.
+     */
     private function indexExists(): bool
     {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            return true;
+        }
+
         if (!Schema::hasTable('messages')) {
             return false;
         }

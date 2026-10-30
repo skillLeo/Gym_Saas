@@ -72,19 +72,40 @@ return new class extends Migration
         }
     }
 
+    /**
+     * Schema::getColumns() rather than `SHOW COLUMNS`: the raw form is MySQL-only
+     * and is a syntax error on sqlite, which aborted the whole migration run and
+     * stopped the test suite booting. Laravel's introspection answers the same
+     * question on every driver.
+     */
     private function columnIsNotNullable(string $column): bool
     {
-        $col = collect(DB::select('SHOW COLUMNS FROM `calendar_events`'))
-            ->firstWhere('Field', $column);
+        $col = collect(Schema::getColumns('calendar_events'))
+            ->firstWhere('name', $column);
 
-        return $col && $col->Null === 'NO';
+        return $col !== null && ($col['nullable'] ?? true) === false;
     }
 
+    /**
+     * Reports the `type` column's SQL definition, which the callers test for
+     * 'live' before widening the enum.
+     *
+     * SHOW COLUMNS is MySQL-only, and ENUM is too: other drivers store the
+     * column as plain text with no set of permitted values to widen. Claiming
+     * the value is already present off MySQL therefore skips both ALTER
+     * statements, which is correct — there is no enum constraint there to
+     * stop 'live' being stored. Previously this raised a syntax error on
+     * sqlite and took the whole migration run down with it.
+     */
     private function typeColumnDefinition(): string
     {
-        $col = collect(DB::select('SHOW COLUMNS FROM `calendar_events`'))
-            ->firstWhere('Field', 'type');
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            return "enum('workout','meal','appointment','personal','other','live')";
+        }
 
-        return $col->Type ?? '';
+        $col = collect(Schema::getColumns('calendar_events'))
+            ->firstWhere('name', 'type');
+
+        return $col['type'] ?? '';
     }
 };

@@ -69,10 +69,15 @@ return new class extends Migration
         // Binary collation is required here for the same reason as the forward
         // migration: MySQL's default collation treats many emoji as equal, so a
         // plain WHERE would match the wrong rows.
+        // Built per driver — SQLite has no utf8mb4_bin and would abort the run.
+        $binary = DB::connection()->getDriverName() === 'mysql'
+            ? fn (string $column, string $value) => DB::table('fitness_goals')
+                ->whereRaw("{$column} COLLATE utf8mb4_bin = ?", [$value])
+            : fn (string $column, string $value) => DB::table('fitness_goals')
+                ->where($column, $value);
+
         foreach (self::ICON_TO_EMOJI as $icon => $emoji) {
-            DB::table('fitness_goals')
-                ->whereRaw('icon_name COLLATE utf8mb4_bin = ?', [$icon])
-                ->update(['emoji' => $emoji]);
+            $binary('icon_name', $icon)->update(['emoji' => $emoji]);
         }
     }
 };

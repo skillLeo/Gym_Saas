@@ -130,6 +130,7 @@ export const MORE_GROUPS: { title: string; titleKey: string; items: NavItem[] }[
       { href: '/admin/coupon-offers', icon: 'ticket',       label: 'Conversion Offers', adminOnly: true },
       { href: '/admin/vibe-calls',    icon: 'radio',        label: 'Vibe Calls',    adminOnly: true },
       { href: '/admin/beta',          icon: 'key',          label: 'Beta Launch',   adminOnly: true },
+      { href: '/admin/ai-usage',      icon: 'chart-line',   label: 'AI Usage',      adminOnly: true },
       { href: '/admin/coaching',      icon: 'stethoscope',  label: 'Coaching Portal', adminOnly: true },
       { href: '/admin/resources',     icon: 'folder',       label: 'Resources',     adminOnly: true },
       { href: '/admin/api-keys',      icon: 'key',          label: 'API Keys',      adminOnly: true },

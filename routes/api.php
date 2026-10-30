@@ -357,6 +357,22 @@ Route::middleware(['auth:sanctum', 'verified.email', 'subscribed'])->group(funct
         Route::get('/user/{user}',           [$c, 'forMember']);
     });
 
+    /*
+     * AI features (Phase 11).
+     *
+     * `status` and `consent` are deliberately NOT behind `ai.access`: they are
+     * how a member discovers whether they have access and how they grant
+     * consent, so gating them on already having both would make both
+     * unreachable. Everything that actually spends money goes through
+     * `ai.access`, which checks the kill switch, the per-member flag, consent
+     * and the limits before the request reaches a controller.
+     */
+    Route::prefix("ai")->middleware("member")->group(function () {
+        $c = \App\Http\Controllers\Api\AiController::class;
+        Route::get("/status",          [$c, "status"]);
+        Route::post("/consent",        [$c, "consent"])->middleware("throttle:10,1");
+        Route::delete("/consent",      [$c, "revokeConsent"]);
+    });
     // Super Admin — API key management + stats + users
     // Static routes MUST come before wildcard /{user}
     Route::prefix('admin')->group(function () {
@@ -412,11 +428,24 @@ Route::middleware(['auth:sanctum', 'verified.email', 'subscribed'])->group(funct
             Route::delete('/schedules/{notificationSchedule}', [$c, 'destroySchedule']);
         });
 
+        /*
+         * AI usage and cost controls (Phase 11). Route-level `admin`, not an
+         * internal assertAdmin() — AiUsageController has none.
+         *
+         * `/users/{user}/ai-features` is three segments deep so it cannot be
+         * swallowed by the `/users/{user}` wildcard further down.
+         */
+        Route::middleware("admin")->group(function () {
+            $ai = \App\Http\Controllers\Api\Admin\AiUsageController::class;
+            Route::get("/ai-usage",           [$ai, "index"]);
+            Route::post("/ai-usage/settings", [$ai, "updateSettings"]);
+            Route::post("/users/{user}/ai-features", [$ai, "setUserAccess"]);
+        });
         Route::get('/settings',              [AdminController::class, 'getSettings']);
         Route::post('/settings/smtp',        [AdminController::class, 'updateSmtp']);
-        Route::post('/settings/nutritionix', [AdminController::class, 'updateNutritionix']);
+        Route::post('/settings/food-api', [AdminController::class, 'updateFoodApi']);
         Route::post('/settings/test-smtp',   [AdminController::class, 'testSmtp']);
-        Route::post('/settings/test-nutritionix', [AdminController::class, 'testNutritionix']);
+        Route::post('/settings/test-food-api', [AdminController::class, 'testFoodApi']);
         Route::get('/stats',                 [AdminController::class, 'stats']);
         Route::get('/moderation',            [AdminController::class, 'moderation']);
         Route::get('/users',                 [AdminController::class, 'users']);
