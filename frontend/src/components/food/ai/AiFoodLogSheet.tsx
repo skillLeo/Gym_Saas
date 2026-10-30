@@ -74,6 +74,8 @@ export function AiFoodLogSheet({
 
   const abortRef = useRef<AbortController | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  /** When recording began, so the real clip length can be reported. */
+  const recordStartRef = useRef<number>(0);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
@@ -184,10 +186,13 @@ export function AiFoodLogSheet({
       recorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
         const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-        if (blob.size > 0) void run({ audio: blob, filename: 'clip.webm' });
+        const durationSeconds = (Date.now() - recordStartRef.current) / 1000;
+
+        if (blob.size > 0) void run({ audio: blob, filename: 'clip.webm', durationSeconds });
       };
 
       recorderRef.current = recorder;
+      recordStartRef.current = Date.now();
       recorder.start();
       setRecording(true);
 

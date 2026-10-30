@@ -3,6 +3,7 @@
 namespace App\Services\Ai;
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\ImageManager;
@@ -76,17 +77,86 @@ class MediaPreparer
         return $size === false ? null : [(int) $size[0], (int) $size[1]];
     }
 
+    /*
+     * Plausible bytes-per-second for a voice clip, used to sanity-check a
+     * duration the client reports.
+     *
+     * The ceiling is the one that matters. Transcription is billed per minute,
+     * so a client claiming a shorter clip than it really sent would be charged
+     * less and could make more calls before the monthly cap stopped them. A
+     * claim that implies more than ~512 kbps is not a recording, it is an
+     * attempt to pay less — or a bug — and either way it is discarded.
+     *
+     * The floor catches the opposite mistake: a claim so long that the file
+     * could not possibly contain it. That only over-charges us, but a wrong
+     * number is a wrong number.
+     */
+    private const MAX_BYTES_PER_SECOND = 64000;   // ~512 kbps
+    private const MIN_BYTES_PER_SECOND = 400;     // ~3 kbps
+
     /**
-     * Duration of an audio clip in seconds, or null when it cannot be read.
+     * How many seconds of audio to bill for.
+     *
+     * Order of trust, most to least:
+     *   1. The file's own header, where the format carries one. Nothing the
+     *      client says can override it — this is measured, not claimed.
+     *   2. The duration the client reports, if the file size makes it
+     *      plausible. MediaRecorder produces webm, whose duration is not in a
+     *      place this can cheaply read, so without this a real 4-second clip
+     *      was billed as a full 60.
+     *   3. Null, meaning "unknown". AiClient charges that at the full allowed
+     *      clip length, so a clip nobody can measure costs the most rather
+     *      than the least.
+     *
+     * Always clamped to the configured maximum, so a client cannot bill us for
+     * more than the endpoint would have accepted.
+     */
+    public function billableAudioSeconds(UploadedFile $file, mixed $clientSeconds = null): ?float
+    {
+        $max = (float) config('ai.uploads.max_audio_seconds');
+
+        if (($fromHeader = $this->audioSeconds($file)) !== null) {
+            return min($fromHeader, $max);
+        }
+
+        if (! is_numeric($clientSeconds)) {
+            return null;
+        }
+
+        $claimed = (float) $clientSeconds;
+
+        if ($claimed <= 0) {
+            return null;
+        }
+
+        $bytes = (int) $file->getSize();
+
+        if ($bytes > 0) {
+            $impliedBytesPerSecond = $bytes / $claimed;
+
+            if ($impliedBytesPerSecond > self::MAX_BYTES_PER_SECOND
+                || $impliedBytesPerSecond < self::MIN_BYTES_PER_SECOND) {
+                // Not plausible for this file. Fall back to "unknown", which
+                // bills at the maximum — the safe direction to be wrong in.
+                Log::warning('Implausible client audio duration discarded', [
+                    'implied_bytes_per_second' => (int) $impliedBytesPerSecond,
+                ]);
+
+                return null;
+            }
+        }
+
+        return min($claimed, $max);
+    }
+
+    /**
+     * Duration read from the file itself, or null when the format does not
+     * make it cheap to find.
      *
      * Deliberately best-effort. There is no audio library in this project and
      * adding one for a duration estimate is not worth a dependency on a
-     * disk-constrained host, so this reads the container headers for the two
-     * formats that carry it plainly and gives up otherwise.
-     *
-     * A null is NOT treated as free: AiClient charges an unknown duration at
-     * the full allowed clip length, so a clip we cannot measure costs the most
-     * rather than the least.
+     * disk-constrained host, so this reads the container header for the one
+     * format that carries it plainly and gives up otherwise.
      */
     public function audioSeconds(UploadedFile $file): ?float
     {

@@ -53,6 +53,9 @@ class AiFoodLogController extends Controller
             'image' => ['nullable', 'file', 'max:'.$this->kilobytes('max_image_bytes'), 'mimetypes:'.implode(',', config('ai.uploads.image_mimes'))],
             'audio' => ['nullable', 'file', 'max:'.$this->kilobytes('max_audio_bytes'), 'mimetypes:'.implode(',', config('ai.uploads.audio_mimes'))],
             'text'  => ['nullable', 'string', 'min:2', 'max:1000'],
+            // What the browser timed the recording at. Advisory only — the
+            // server decides what to bill, see billableAudioSeconds().
+            'duration_seconds' => ['nullable', 'numeric', 'min:0', 'max:600'],
         ]);
 
         $given = array_values(array_filter(
@@ -205,7 +208,7 @@ class AiFoodLogController extends Controller
             // A generic name, not the member's own filename, which on a phone
             // can carry a timestamp or a location-derived album title.
             'clip.'.($file->guessExtension() ?: 'webm'),
-            $this->media->audioSeconds($file),
+            $this->media->billableAudioSeconds($file, $request->input('duration_seconds')),
             $request->user(),
         );
 

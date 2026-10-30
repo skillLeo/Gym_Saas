@@ -203,14 +203,35 @@ export async function giveConsent(version: string): Promise<void> {
   await api.post('/ai/consent', { version, accepted: true });
 }
 
-type AnalyzeInput = { image: File } | { audio: Blob; filename: string } | { text: string };
+type AnalyzeInput =
+  | { image: File }
+  | { audio: Blob; filename: string; durationSeconds?: number }
+  | { text: string };
 
 export async function analyze(input: AnalyzeInput, signal: AbortSignal): Promise<Draft> {
   const form = new FormData();
 
-  if ('image' in input) form.append('image', input.image);
-  else if ('audio' in input) form.append('audio', input.audio, input.filename);
-  else form.append('text', input.text);
+  if ('image' in input) {
+    form.append('image', input.image);
+  } else if ('audio' in input) {
+    form.append('audio', input.audio, input.filename);
+
+    /*
+     * How long the browser actually recorded for. Transcription is billed by
+     * the minute and webm does not carry its duration anywhere cheap to read,
+     * so without this the server has to assume the worst and bill every clip
+     * as a full minute.
+     *
+     * Advisory only. The server checks it against the file size and ignores
+     * anything implausible — otherwise under-reporting would be a way to pay
+     * less and make more calls before the cap bites.
+     */
+    if (typeof input.durationSeconds === 'number' && input.durationSeconds > 0) {
+      form.append('duration_seconds', input.durationSeconds.toFixed(2));
+    }
+  } else {
+    form.append('text', input.text);
+  }
 
   const res = await api.post('/ai/food-log/analyze', form, {
     signal,
