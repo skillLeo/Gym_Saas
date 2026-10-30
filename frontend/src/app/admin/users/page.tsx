@@ -185,7 +185,17 @@ export default function AdminUsersPage() {
                     {new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </div>
                   <div className="col-span-2 hidden sm:block">
-                    <Badge variant={STATE_BADGE[user.account_state]} size="sm">{STATE_LABEL[user.account_state]}</Badge>
+                    {/*
+                      Admins never show a billing state. `account_state` keeps
+                      saying "trial" for them because being an admin is a role,
+                      not a subscription — but User::hasAccess() short-circuits
+                      on is_admin, so an admin whose trial has run out still has
+                      full access. Showing "Trial" against the site owner reads
+                      as "your access is about to run out" when it never will.
+                    */}
+                    {user.is_admin
+                      ? <Badge variant="green" size="sm">Full access</Badge>
+                      : <Badge variant={STATE_BADGE[user.account_state]} size="sm">{STATE_LABEL[user.account_state]}</Badge>}
                   </div>
                   <div className="col-span-2 flex gap-1.5">
                     <Link href={`/admin/users/${user.id}`}
