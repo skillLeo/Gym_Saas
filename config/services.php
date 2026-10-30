@@ -35,9 +35,14 @@ return [
         ],
     ],
 
-    'nutritionix' => [
-        'app_id'  => env('NUTRITIONIX_APP_ID'),
-        'app_key' => env('NUTRITIONIX_APP_KEY'),
+    /*
+     * USDA FoodData Central. One free key from api.data.gov covers search,
+     * barcode and the natural-language parser. Replaces Nutritionix, which
+     * this project moved off; an admin-entered key in system_settings takes
+     * priority over this value so it can be changed without a deploy.
+     */
+    'usda' => [
+        'api_key' => env('USDA_API_KEY'),
     ],
 
     'google' => [

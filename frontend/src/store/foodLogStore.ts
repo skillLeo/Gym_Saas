@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 export interface FoodItem {
   id: number;
-  nutritionix_id?: string;
+  external_food_id?: string;
   name: string;
   brand?: string;
   serving_qty: number;

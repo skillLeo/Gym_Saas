@@ -11,7 +11,7 @@ import api from '@/lib/api';
 import toast from 'react-hot-toast';
 
 interface FoodItem {
-  nutritionix_id: string | null;
+  external_food_id: string | null;
   name: string;
   brand: string | null;
   serving_qty: number;
@@ -84,7 +84,7 @@ export default function BarcodeScannerPage() {
           fat_g:        result.fat_g,
           serving_qty:  result.serving_qty,
           serving_unit: result.serving_unit,
-          nutritionix_id: result.nutritionix_id,
+          external_food_id: result.external_food_id,
         },
         meal_slot_id: selectedSlot,
         logged_date:  new Date().toISOString().slice(0, 10),

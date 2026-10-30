@@ -8,7 +8,7 @@ class FoodItem extends Model
     use HasFactory;
 
     protected $fillable = [
-        'nutritionix_id','name','brand','serving_qty','serving_unit',
+        'external_food_id','food_source','name','brand','serving_qty','serving_unit',
         'serving_weight_grams','calories','protein_g','carbs_g','fat_g',
         'fiber_g','sugar_g','sodium_mg','is_custom','created_by_user_id',
     ];
