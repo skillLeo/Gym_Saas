@@ -56,6 +56,7 @@ function CheckoutSkeleton() {
 
 function SubscribeInner() {
   const { t } = useI18nStore();
+  const router = useRouter();
   const params = useSearchParams();
   const planKey = params.get('plan') as Plan['key'] | null;
 
@@ -145,7 +146,7 @@ function SubscribeInner() {
           <ErrorState
             title={t('subscribe.error.start')}
             description={error ?? t('subscribe.planGone')}
-            onRetry={() => window.location.assign('/membership')}
+            onRetry={() => router.push('/membership')}
             retryLabel={t('subscribe.back')}
           />
         </div>
@@ -290,7 +291,19 @@ function PaymentForm({ plan }: { plan: Plan }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="rounded-md border border-border bg-surface-raised p-5">
-        <PaymentElement options={{ layout: 'tabs' }} />
+        {/*
+          `business.name` overrides the merchant name in the mandate text under
+          the card field ("you allow X to charge your card..."). Left unset,
+          Stripe falls back to the account's dashboard display name, which on
+          this account is "Ebonix" — a name the customer has never seen, shown at
+          the exact moment they hand over card details.
+
+          This only fixes the Payment Element. The bank statement descriptor is
+          derived from the Stripe account too (statement_descriptor is null), so
+          a real charge would still read EBONIX on the customer's statement. That
+          part is dashboard-only and cannot be set from here.
+        */}
+        <PaymentElement options={{ layout: 'tabs', business: { name: 'My EXtreme Trainer' } }} />
       </div>
 
       {message && <Alert tone="error">{message}</Alert>}
