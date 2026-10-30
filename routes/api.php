@@ -370,6 +370,18 @@ Route::middleware(['auth:sanctum', 'verified.email', 'subscribed'])->group(funct
     Route::prefix("ai")->middleware("member")->group(function () {
         $c = \App\Http\Controllers\Api\AiController::class;
         Route::get("/status",          [$c, "status"]);
+
+        /*
+         * Snap / Say / Type. `ai.access` checks the kill switch, the per-member
+         * flag, consent and the limits BEFORE the request reaches a controller,
+         * so a refusal costs nothing. The throttle is a second, cheaper line:
+         * the gate reads the database, this does not.
+         */
+        $food = \App\Http\Controllers\Api\AiFoodLogController::class;
+        Route::post("/food-log/analyze", [$food, "analyze"])
+            ->middleware(["ai.access", "throttle:12,1"]);
+        Route::post("/food-log/confirm", [$food, "confirm"])
+            ->middleware(["ai.access", "throttle:30,1"]);
         Route::post("/consent",        [$c, "consent"])->middleware("throttle:10,1");
         Route::delete("/consent",      [$c, "revokeConsent"]);
     });
