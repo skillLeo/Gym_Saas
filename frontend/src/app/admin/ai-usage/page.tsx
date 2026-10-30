@@ -90,8 +90,18 @@ const STATUS_LABELS: Record<string, string> = {
 /**
  * Four decimal places, because a month of light use costs cents and rounding
  * to two would show "$0.00" next to hundreds of calls.
+ *
+ * Anything above zero but below the smallest figure four places can show is
+ * rendered as "<$0.0001", never as "$0". One text analysis really does cost
+ * about $0.00004, and printing that as "$0" told the admin the call was free —
+ * which is the kind of confident, wrong number this project has had to remove
+ * before. Exact zero still prints as "$0", because that is true.
  */
-const money = (n: number) => `$${n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '') || '0'}`;
+const money = (n: number) => {
+  if (n > 0 && n < 0.0001) return '<$0.0001';
+
+  return `$${n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '') || '0'}`;
+};
 
 export default function AdminAiUsagePage() {
   const [data, setData] = useState<AiUsage | null>(null);
