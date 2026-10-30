@@ -4,12 +4,22 @@ use App\Http\Controllers\Controller;
 use App\Models\FoodItem;
 use App\Models\FoodLogEntry;
 use App\Models\MealSlot;
+use App\Services\FoodJournal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class FoodLogController extends Controller
 {
+    /**
+     * The journal write lives in FoodJournal so that manual, barcode/search
+     * and AI logging all produce an identical row. See that class for why the
+     * food-item lookup deliberately stays in each caller.
+     */
+    public function __construct(private readonly FoodJournal $journal)
+    {
+    }
+
     public function index(Request $request)
     {
         $date  = $request->input('date', now()->toDateString());
@@ -61,21 +71,19 @@ class FoodLogController extends Controller
         }
 
         $food = FoodItem::findOrFail($validated['food_item_id']);
-        $mult = (float) $validated['servings'];
 
-        $entry = FoodLogEntry::create([
-            'user_id'          => $request->user()->id,
-            'food_item_id'     => $food->id,
-            'meal_slot_id'     => $slot->id,
-            'meal_type'        => $slot->legacy_key,
-            'logged_date'      => $validated['logged_date'],
-            'servings'         => $mult,
-            'total_calories'   => round($food->calories * $mult, 2),
-            'total_protein_g'  => round($food->protein_g * $mult, 2),
-            'total_carbs_g'    => round($food->carbs_g * $mult, 2),
-            'total_fat_g'      => round($food->fat_g * $mult, 2),
-            'image_url'        => $validated['image_url'] ?? $food->image_url ?? null,
-        ]);
+        $entry = $this->journal->log(
+            $request->user(),
+            $slot,
+            $food,
+            (float) $validated['servings'],
+            $validated['logged_date'],
+            // The `$food->image_url` arm is kept verbatim. food_items has no
+            // such column, so it has always resolved to null — but it is
+            // behaviour the frontend has shipped against, and an extraction is
+            // not the place to change it.
+            $validated['image_url'] ?? $food->image_url ?? null,
+        );
 
         return response()->json(['success' => true, 'data' => $entry->load('foodItem'), 'message' => 'Food logged.'], 201);
     }
@@ -106,7 +114,7 @@ class FoodLogController extends Controller
 
         // Find or create food item
         $food = FoodItem::firstOrCreate(
-            ['nutritionix_id' => $fd['nutritionix_id'] ?? null, 'name' => $fd['name'], 'is_custom' => false],
+            ['external_food_id' => $fd['external_food_id'] ?? null, 'name' => $fd['name'], 'is_custom' => false],
             [
                 'brand'                => $fd['brand'] ?? null,
                 'serving_qty'          => $fd['serving_qty'],
@@ -122,20 +130,15 @@ class FoodLogController extends Controller
             ]
         );
 
-        $mult  = (float) $validated['servings'];
-        $entry = FoodLogEntry::create([
-            'user_id'         => $request->user()->id,
-            'food_item_id'    => $food->id,
-            'meal_slot_id'    => $slot->id,
-            'meal_type'       => $slot->legacy_key,
-            'logged_date'     => $validated['logged_date'],
-            'servings'        => $mult,
-            'total_calories'  => round($food->calories * $mult, 2),
-            'total_protein_g' => round($food->protein_g * $mult, 2),
-            'total_carbs_g'   => round($food->carbs_g * $mult, 2),
-            'total_fat_g'     => round($food->fat_g * $mult, 2),
-            'image_url'       => $validated['image_url'] ?? null,
-        ]);
+        $entry = $this->journal->log(
+            $request->user(),
+            $slot,
+            $food,
+            (float) $validated['servings'],
+            $validated['logged_date'],
+            // No fallback to the food's own image here, unlike store().
+            $validated['image_url'] ?? null,
+        );
 
         return response()->json(['success' => true, 'data' => $entry->load('foodItem'), 'message' => 'Food logged.'], 201);
     }
@@ -147,16 +150,8 @@ class FoodLogController extends Controller
         }
 
         $validated = $request->validate(['servings' => 'required|numeric|min:0.01|max:100']);
-        $mult      = (float) $validated['servings'];
-        $food      = $foodLog->foodItem;
 
-        $foodLog->update([
-            'servings'        => $mult,
-            'total_calories'  => round($food->calories * $mult, 2),
-            'total_protein_g' => round($food->protein_g * $mult, 2),
-            'total_carbs_g'   => round($food->carbs_g * $mult, 2),
-            'total_fat_g'     => round($food->fat_g * $mult, 2),
-        ]);
+        $this->journal->recalculate($foodLog, (float) $validated['servings']);
 
         return response()->json(['success' => true, 'data' => $foodLog->load('foodItem'), 'message' => 'Entry updated.']);
     }
