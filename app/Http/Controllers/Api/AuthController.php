@@ -46,6 +46,10 @@ class AuthController extends Controller
             'name'                  => 'required|string|max:255',
             'email'                 => ['required', 'string', 'email:rfc', 'regex:/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/', 'max:255', 'unique:users'],
             'password'              => ['required', 'confirmed', PasswordRule::min(8)],
+            // Whatever language the signup form itself was rendered in — an
+            // invalid or missing value falls back to the column default
+            // rather than failing registration over a cosmetic preference.
+            'locale'                => 'sometimes|in:en,es,fr',
         ]);
 
         // One implementation of this, shared with the seeders and the backfill
@@ -59,6 +63,7 @@ class AuthController extends Controller
             'email'               => $validated['email'],
             'password'            => Hash::make($validated['password']),
             'onboarding_completed'=> false,
+            'locale'              => $validated['locale'] ?? 'en',
         ]);
 
         // Trial length is admin-configurable; the service owns both the dates
@@ -265,6 +270,7 @@ class AuthController extends Controller
             // Account-settings switch and profile billboard — both previously had
             // UI with no persistence at all.
             'email_notifications'     => 'sometimes|boolean',
+            'locale'                  => 'sometimes|in:en,es,fr',
             'billboard'               => 'sometimes|nullable|array',
             'billboard.text'          => 'nullable|string|max:120',
             'billboard.font'          => 'nullable|string|max:40',
@@ -382,6 +388,19 @@ class AuthController extends Controller
             'username'                 => $user->username,
             'email'                    => $user->email,
             'avatar_url'               => $user->avatar_url,
+            /*
+             * Whether the user actually uploaded a photo, as opposed to being
+             * handed the generated ui-avatars.com fallback.
+             *
+             * `avatar_url` is never null — User::avatar_url falls back to an
+             * initials avatar — so the client cannot tell "has a photo" from
+             * "has a placeholder" by looking at it. Onboarding was reading it as
+             * a boolean and telling brand-new users to "Tap to change" a photo
+             * they had never uploaded. The raw `avatar` column is the honest
+             * signal, so expose it as one rather than making the client
+             * string-match a hostname.
+             */
+            'has_avatar'               => (bool) $user->avatar,
             'bio'                      => $user->bio,
             'nickname'                 => $user->nickname,
             'alternate_names'          => $user->alternate_names ?? [],
@@ -399,9 +418,24 @@ class AuthController extends Controller
             'daily_water_goal_glasses' => $user->daily_water_goal_glasses,
             'email_notifications'      => (bool) $user->email_notifications,
             'billboard'                => $user->billboard,
+            'locale'                   => $user->locale ?? 'en',
             'subscription_status'      => $user->subscription_status,
-            'is_on_trial'              => $user->isOnTrial(),
-            'trial_days_remaining'     => $user->trialDaysRemaining(),
+            /*
+             * Admins are never "on trial" as far as the UI is concerned.
+             *
+             * The trial row still exists on their record, but hasAccess() short
+             * circuits on is_admin, so an admin whose trial has expired keeps
+             * full access forever. Reporting the countdown anyway put "24 days
+             * left on your trial" in front of the site owner on his dashboard,
+             * membership page, profile and settings — telling him his access was
+             * about to run out when it never can.
+             *
+             * Only the payload is adjusted. isOnTrial() itself is untouched, so
+             * nothing in the billing or access logic changes. The real billing
+             * state stays visible in subscription_status and account_state.
+             */
+            'is_on_trial'              => $user->isOnTrial() && !$user->is_admin,
+            'trial_days_remaining'     => $user->is_admin ? 0 : $user->trialDaysRemaining(),
             'trial_ends_at'            => $user->trial_ends_at?->toIso8601String(),
             'onboarding_completed'     => $user->onboarding_completed,
             'member_since'             => $user->created_at->toDateString(),

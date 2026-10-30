@@ -1,6 +1,8 @@
 'use client';
 import { usePathname } from 'next/navigation';
+import { useEffect } from 'react';
 import { Utensils, Dumbbell, BookOpen, CalendarDays, Users } from 'lucide-react';
+import { useI18nStore } from '@/store/i18nStore';
 
 /**
  * Split auth layout: brand panel on the left (lg+), form on the right.
@@ -16,31 +18,42 @@ import { Utensils, Dumbbell, BookOpen, CalendarDays, Users } from 'lucide-react'
  *    single flat scrim.
  */
 
+// Dictionary keys, resolved at render — see the same pattern (and the reason
+// for it) in the landing page component.
 const PANELS = {
   login: {
-    eyebrow: 'Welcome back',
-    heading: ['Pick up', 'where you left off.'],
-    sub: 'Your logs, workouts, and progress are exactly as you left them.',
+    eyebrowKey: 'auth.panel.login.eyebrow',
+    headingKeys: ['auth.panel.login.heading1', 'auth.panel.login.heading2'],
+    subKey: 'auth.panel.login.sub',
   },
   register: {
-    eyebrow: 'Free for 30 days',
-    heading: ['Start training', 'with a plan.'],
-    sub: 'Track what you eat, log what you lift, and see the pattern over time.',
+    eyebrowKey: 'auth.panel.register.eyebrow',
+    headingKeys: ['auth.panel.register.heading1', 'auth.panel.register.heading2'],
+    subKey: 'auth.panel.register.sub',
   },
 } as const;
 
 const FEATURES = [
-  { icon: Utensils, text: 'Calorie and macro tracking' },
-  { icon: Dumbbell, text: 'Workout logging and history' },
-  { icon: BookOpen, text: 'Recipes and meal planning' },
-  { icon: CalendarDays, text: 'One calendar for training and meals' },
-  { icon: Users, text: 'A community that shows up' },
+  { icon: Utensils, textKey: 'auth.panel.feature.calorie' },
+  { icon: Dumbbell, textKey: 'auth.panel.feature.workout' },
+  { icon: BookOpen, textKey: 'auth.panel.feature.recipes' },
+  { icon: CalendarDays, textKey: 'auth.panel.feature.calendar' },
+  { icon: Users, textKey: 'auth.panel.feature.community' },
 ];
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isRegister = pathname?.includes('register');
   const panel = isRegister ? PANELS.register : PANELS.login;
+  const { t } = useI18nStore();
+
+  // This layout sits outside AppShell, the only other place that rehydrates
+  // the language store — see the identical note on the landing page. Without
+  // this, a saved French or Spanish preference never reaches the auth screens
+  // and t() always falls back to English.
+  useEffect(() => {
+    useI18nStore.persist.rehydrate();
+  }, []);
 
   return (
     <div className="min-h-dvh flex bg-surface-base">
@@ -62,27 +75,27 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         <div className="relative max-w-md">
-          <p className="text-overline font-semibold uppercase text-accent mb-3">{panel.eyebrow}</p>
+          <p className="text-overline font-semibold uppercase text-accent mb-3">{t(panel.eyebrowKey)}</p>
           <h2 className="font-display text-white leading-[1.1] mb-4">
-            <span className="block text-[2.5rem] xl:text-[3rem]">{panel.heading[0]}</span>
-            <span className="block text-[2.5rem] xl:text-[3rem]">{panel.heading[1]}</span>
+            <span className="block text-[2.5rem] xl:text-[3rem]">{t(panel.headingKeys[0])}</span>
+            <span className="block text-[2.5rem] xl:text-[3rem]">{t(panel.headingKeys[1])}</span>
           </h2>
-          <p className="text-body-lg text-white/70 text-pretty mb-8">{panel.sub}</p>
+          <p className="text-body-lg text-white/70 text-pretty mb-8">{t(panel.subKey)}</p>
 
           <ul className="flex flex-col gap-3">
-            {FEATURES.map(({ icon: FeatureIcon, text }) => (
-              <li key={text} className="flex items-center gap-3">
+            {FEATURES.map(({ icon: FeatureIcon, textKey }) => (
+              <li key={textKey} className="flex items-center gap-3">
                 <span className="h-8 w-8 rounded-sm bg-white/10 flex items-center justify-center shrink-0">
                   <FeatureIcon size={16} strokeWidth={1.75} className="text-accent" />
                 </span>
-                <span className="text-body text-white/85">{text}</span>
+                <span className="text-body text-white/85">{t(textKey)}</span>
               </li>
             ))}
           </ul>
         </div>
 
         <p className="relative text-caption text-white/40">
-          © {new Date().getFullYear()} My EXtreme Trainer
+          {t('auth.panel.copyright', { year: new Date().getFullYear() })}
         </p>
       </aside>
 

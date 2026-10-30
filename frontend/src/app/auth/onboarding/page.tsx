@@ -79,7 +79,9 @@ export default function OnboardingPage() {
       const res = await api.post('/auth/avatar', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      if (user) setUser({ ...user, avatar_url: res.data.data.avatar_url });
+      // has_avatar must flip here too, or the label keeps saying "Upload a
+      // photo" until the next full page load even though the upload succeeded.
+      if (user) setUser({ ...user, avatar_url: res.data.data.avatar_url, has_avatar: true });
       toast.success('Photo updated.');
     } catch {
       toast.error('Could not upload that photo. Try a JPG or PNG under 2 MB.');
@@ -99,8 +101,30 @@ export default function OnboardingPage() {
       const goalObj = GOALS.find((g) => g.id === primaryGoalId) || GOALS[GOALS.length - 1];
       const activityObj = ACTIVITY_LEVELS.find((a) => a.id === stats.activity) || ACTIVITY_LEVELS[2];
 
-      const weightKg = stats.weight ? parseFloat(stats.weight) / 2.20462 : 80;
-      const heightCm = stats.height ? parseFloat(stats.height) * 2.54 : 175;
+      // Check the numbers in the units the member actually typed, before the
+      // server sees them converted. The API validates centimetres and kilograms
+      // and reports failures that way ("The height cm field must be at least
+      // 50"), which is unreadable to someone who entered inches and pounds —
+      // and it costs a round trip to say nothing useful.
+      const heightIn = parseFloat(stats.height);
+      const weightLb = parseFloat(stats.weight);
+
+      if (!(heightIn >= 20 && heightIn <= 108)) {
+        toast.error('Height should be your total height in inches — 5 ft 3 in is 63, 6 ft is 72.');
+        setLoading(false);
+        return false;
+      }
+      // 22 lb / 1100 lb are the server's own 10 kg and 500 kg bounds expressed
+      // in pounds — deliberately not narrower, so this cannot refuse something
+      // the API would have accepted.
+      if (!(weightLb >= 22 && weightLb <= 1100)) {
+        toast.error('Weight should be in pounds — for example 185.');
+        setLoading(false);
+        return false;
+      }
+
+      const weightKg = weightLb / 2.20462;
+      const heightCm = heightIn * 2.54;
       const age = parseInt(stats.age) || 30;
       const dob = new Date();
       dob.setFullYear(dob.getFullYear() - age);
@@ -197,9 +221,16 @@ export default function OnboardingPage() {
                   disabled={uploadingPhoto}
                   className="h-24 w-24 rounded-full bg-surface-sunken border border-dashed border-border-strong flex items-center justify-center overflow-hidden hover:border-accent transition-colors"
                 >
+                  {/*
+                    Keyed on `has_avatar`, not `avatar_url`. The latter is never
+                    empty — the API falls back to a generated ui-avatars.com
+                    initials image — so using it here showed brand-new users a
+                    placeholder portrait and told them to "change" a photo they
+                    had never uploaded.
+                  */}
                   {uploadingPhoto ? (
                     <Loader2 size={22} strokeWidth={2} className="text-accent animate-spin" />
-                  ) : user?.avatar_url ? (
+                  ) : user?.has_avatar ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
                   ) : (
@@ -207,7 +238,7 @@ export default function OnboardingPage() {
                   )}
                 </button>
                 <p className="text-caption text-content-tertiary">
-                  {user?.avatar_url ? 'Tap to change' : 'Tap to add a photo'}
+                  {user?.has_avatar ? 'Tap to change' : 'Upload a photo'}
                 </p>
               </div>
 
@@ -280,6 +311,12 @@ export default function OnboardingPage() {
                   min={0}
                   max={1000}
                 />
+                {/* The "in" suffix carries the unit; no hint text needed. What
+                    this field does need is the guard in finish(), because
+                    someone thinking in feet and inches can still type 5.3 —
+                    which converts to 13 cm and comes back from the API as
+                    "The height cm field must be at least 50", naming a field
+                    and a unit the member never saw. */}
                 <NumericField
                   label="Height"
                   suffix="in"
