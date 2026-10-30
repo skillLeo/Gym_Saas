@@ -19,23 +19,26 @@ use Tests\TestCase;
  * run before and after, so "manual logging is unchanged" is a demonstrated
  * fact rather than a claim.
  *
- * NOTHING HERE ASSERTS WHAT THE BEHAVIOUR OUGHT TO BE. It records what it IS,
- * including three things that are almost certainly bugs. They are pinned on
- * purpose: an extraction is the wrong moment to change behaviour, and a bug
- * the frontend has been living with is still behaviour the frontend may be
- * relying on. Each is marked BUG, PINNED below and reported separately.
+ * Most of this file records what the code DOES rather than what it ought to,
+ * which is what let it be run unchanged either side of the FoodJournal
+ * extraction to show that nothing moved.
  *
- *   1. storeFromApi() silently discards external_food_id, brand,
- *      serving_weight_grams, fiber_g, sugar_g and sodium_mg. They have no
- *      validation rules, and $request->validate() returns only ruled keys, so
- *      they never reach the model. Every food logged from search or barcode
- *      loses its brand and micronutrients.
- *   2. Because external_food_id is therefore always null, firstOrCreate()
- *      matches on name alone, so two genuinely different foods sharing a name
- *      collapse into one — and the first one's nutrition wins.
- *   3. meal_type is written from $slot->legacy_key, which seedDefaultsFor()
- *      never populates, so it is null for every entry made against a default
- *      meal slot.
+ * Three behaviours were originally pinned here as bugs. Two have since been
+ * fixed and their tests now assert the fixed behaviour; the other is still
+ * pinned as-is:
+ *
+ *   1. FIXED. storeFromApi() used to discard external_food_id, brand,
+ *      serving_weight_grams, fiber_g, sugar_g and sodium_mg, because
+ *      $request->validate() returns only the keys that carry a rule and those
+ *      six had none. Every food logged from search, barcode, photo or voice
+ *      lost its brand and its micronutrients.
+ *   2. FIXED as a consequence. external_food_id being always null meant
+ *      firstOrCreate() matched on name alone, so two genuinely different foods
+ *      sharing a name collapsed into one and the first one's nutrition was
+ *      logged for both.
+ *   3. STILL PINNED. meal_type is written from $slot->legacy_key, which
+ *      seedDefaultsFor() never populates, so it is null for every entry made
+ *      against a default meal slot.
  */
 class ManualFoodLoggingCharacterizationTest extends TestCase
 {
@@ -374,13 +377,12 @@ class ManualFoodLoggingCharacterizationTest extends TestCase
         $res->assertJsonPath('message', 'Food logged.');
     }
 
-    public function test_from_api_silently_discards_every_unruled_field(): void
+    public function test_from_api_stores_every_field_it_is_sent(): void
     {
         $this->postJson('/api/food-log/from-api', $this->fromApiPayload())->assertStatus(201);
 
         $food = FoodItem::sole();
 
-        // The fields that DO have validation rules arrive.
         $this->assertSame('Apple, raw', $food->name);
         $this->assertEquals(52, $food->calories);
         $this->assertEquals(0.3, $food->protein_g);
@@ -389,44 +391,83 @@ class ManualFoodLoggingCharacterizationTest extends TestCase
         $this->assertEquals(100, $food->serving_qty);
         $this->assertSame('g', $food->serving_unit);
 
-        // BUG, PINNED (1): these were all sent and are all dropped, because
-        // $request->validate() returns only the keys that have rules.
-        $this->assertNull($food->external_food_id);
-        $this->assertNull($food->brand);
-        $this->assertNull($food->serving_weight_grams);
-        $this->assertNull($food->fiber_g);
-        $this->assertNull($food->sugar_g);
-        $this->assertNull($food->sodium_mg);
-
-        // Never written by this endpoint, though the column exists.
-        $this->assertNull($food->food_source);
+        // FIXED (1). These six were sent by every caller and silently dropped,
+        // because they carried no validation rule and $request->validate()
+        // returns only ruled keys.
+        $this->assertSame('1234567', $food->external_food_id);
+        $this->assertSame('Orchard Co', $food->brand);
+        $this->assertEquals(2.4, $food->fiber_g);
+        $this->assertEquals(10.4, $food->sugar_g);
+        $this->assertEquals(1, $food->sodium_mg);
     }
 
-    public function test_from_api_deduplicates_on_name_alone(): void
+    public function test_from_api_stores_a_serving_weight_when_one_is_sent(): void
     {
-        // BUG, PINNED (2): external_food_id never survives validation, so
-        // firstOrCreate() always looks up (null, name, false). Two different
-        // foods with the same name therefore collapse into one, and the
-        // FIRST one's nutrition is what gets logged for both.
+        $this->postJson(
+            '/api/food-log/from-api',
+            $this->fromApiPayload(['serving_weight_grams' => 182]),
+        )->assertStatus(201);
+
+        $this->assertEquals(182, FoodItem::sole()->serving_weight_grams);
+    }
+
+    public function test_from_api_still_accepts_a_payload_without_the_optional_fields(): void
+    {
+        // The barcode, photo-log and voice-log screens send only the required
+        // seven. Backwards compatibility: an omitted optional field is still
+        // simply absent, not a validation failure.
+        $this->postJson('/api/food-log/from-api', [
+            'food_data' => [
+                'name' => 'Plain food', 'serving_qty' => 100, 'serving_unit' => 'g',
+                'calories' => 52, 'protein_g' => 0.3, 'carbs_g' => 14, 'fat_g' => 0.2,
+            ],
+            'meal_slot_id' => $this->slot->id,
+            'logged_date'  => '2026-10-30',
+            'servings'     => 1,
+        ])->assertStatus(201);
+
+        $food = FoodItem::sole();
+        $this->assertNull($food->external_food_id);
+        $this->assertNull($food->brand);
+        $this->assertNull($food->fiber_g);
+    }
+
+    public function test_from_api_rejects_a_malformed_optional_field(): void
+    {
+        $this->postJson(
+            '/api/food-log/from-api',
+            $this->fromApiPayload(['fiber_g' => -5]),
+        )->assertStatus(422)->assertJsonValidationErrors('food_data.fiber_g');
+
+        $this->assertDatabaseCount('food_log_entries', 0);
+    }
+
+    public function test_from_api_keeps_two_foods_with_the_same_name_apart(): void
+    {
+        // FIXED (2). external_food_id now survives validation, so the lookup
+        // can tell two different USDA foods apart even when they share a name.
+        // Previously both collapsed into one record and the first one's
+        // nutrition was logged for both.
         FoodItem::create([
             'external_food_id' => '9999999',
             'name'             => 'Apple, raw',
             'is_custom'        => false,
             'serving_qty'      => 100,
             'serving_unit'     => 'g',
-            'calories'         => 52,
-            'protein_g'        => 0.3,
-            'carbs_g'          => 14,
-            'fat_g'            => 0.2,
+            'calories'         => 999,
+            'protein_g'        => 9,
+            'carbs_g'          => 9,
+            'fat_g'            => 9,
         ]);
 
-        $this->postJson('/api/food-log/from-api', $this->fromApiPayload())->assertStatus(201);
+        $this->postJson('/api/food-log/from-api', $this->fromApiPayload())
+            ->assertStatus(201)
+            // 52, not 999: the other food's numbers are no longer borrowed.
+            ->assertJsonPath('data.total_calories', 52);
 
-        // A second row IS created, because the existing one has a non-null
-        // external_food_id and the lookup uses null.
         $this->assertSame(2, FoodItem::where('name', 'Apple, raw')->count());
 
-        // But a repeat of the same request reuses the row it just made.
+        // A repeat of the same request reuses the row it just made.
         $this->postJson('/api/food-log/from-api', $this->fromApiPayload())->assertStatus(201);
         $this->assertSame(2, FoodItem::where('name', 'Apple, raw')->count());
         $this->assertDatabaseCount('food_log_entries', 2);
@@ -434,10 +475,12 @@ class ManualFoodLoggingCharacterizationTest extends TestCase
 
     public function test_from_api_totals_come_from_the_matched_row(): void
     {
-        // Pre-create the row the lookup WILL match: null external_food_id,
-        // same name. Its numbers win over the ones in the request.
+        // Pre-create the row the lookup WILL match — same external id, same
+        // name. An existing record's numbers still win over the ones in the
+        // request, which is unchanged behaviour: firstOrCreate() only writes
+        // its second argument when it has to create.
         FoodItem::create([
-            'external_food_id' => null,
+            'external_food_id' => '1234567',
             'name'             => 'Apple, raw',
             'is_custom'        => false,
             'serving_qty'      => 100,

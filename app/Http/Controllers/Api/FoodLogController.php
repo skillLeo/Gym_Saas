@@ -99,6 +99,29 @@ class FoodLogController extends Controller
             'food_data.fat_g'        => 'required|numeric|min:0',
             'food_data.serving_qty'  => 'required|numeric',
             'food_data.serving_unit' => 'required|string',
+
+            /*
+             * These six were being sent by every caller and silently thrown
+             * away. $request->validate() returns ONLY the keys that carry a
+             * rule, so a field with no rule never reaches $validated and
+             * therefore never reaches the model — the firstOrCreate() below
+             * reads them, finds nothing, and writes null.
+             *
+             * The effect was that every food logged from search, barcode,
+             * photo or voice lost its brand, its fibre, its sugar, its sodium
+             * and its gram weight, and — because external_food_id was always
+             * null — two different foods sharing a name collapsed into one
+             * record, with the first one's nutrition logged for both.
+             *
+             * All optional, so no existing request shape breaks: a caller
+             * that omits them behaves exactly as before.
+             */
+            'food_data.external_food_id'     => 'nullable|string|max:64',
+            'food_data.brand'                => 'nullable|string|max:255',
+            'food_data.serving_weight_grams' => 'nullable|numeric|min:0',
+            'food_data.fiber_g'              => 'nullable|numeric|min:0',
+            'food_data.sugar_g'              => 'nullable|numeric|min:0',
+            'food_data.sodium_mg'            => 'nullable|numeric|min:0',
             'meal_slot_id' => 'required|exists:meal_slots,id',
             'logged_date'  => 'required|date',
             'servings'     => 'required|numeric|min:0.01|max:100',
