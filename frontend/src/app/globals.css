@@ -313,6 +313,80 @@ select option[value=''] {
 h1, h2, h3, h4 { text-wrap: balance; }
 p { text-wrap: pretty; }
 
+/* ── Pointer cursors ──────────────────────────────────────────────────────
+   Tailwind v4 changed its preflight so `button` inherits `cursor: default`
+   instead of `pointer` — the browser default, and a deliberate upstream
+   decision. The practical effect here was that 379 buttons across the app felt
+   dead on hover while only 31 carried an explicit `cursor-pointer`.
+
+   Fixed once, in CSS, rather than by adding a class to several hundred
+   components: a rule here cannot be forgotten on the next button someone
+   writes, and it applies to elements rendered by libraries we do not control.
+
+   Anything genuinely interactive gets a pointer; anything disabled gets
+   not-allowed, so a dead control is visibly dead rather than silently inert. */
+button,
+[role="button"],
+[role="tab"],
+[role="switch"],
+[role="option"],
+[role="menuitem"],
+a[href],
+summary,
+label[for],
+select,
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"],
+input[type="range"],
+input[type="submit"],
+input[type="reset"] {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled,
+textarea:disabled,
+input:disabled,
+fieldset:disabled button,
+[aria-disabled="true"],
+[data-disabled="true"] {
+  cursor: not-allowed;
+}
+
+/* A control that is only *busy* is not broken — it will accept input again in a
+   moment, so it reads as waiting rather than refusing. */
+[aria-busy="true"] {
+  cursor: progress;
+}
+
+/* Text selection inside an input should still look like text. */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="number"],
+input[type="tel"],
+input[type="url"],
+input[type="date"],
+input[type="time"],
+textarea,
+[contenteditable="true"] {
+  cursor: text;
+}
+
+/* ── Pressed state ────────────────────────────────────────────────────────
+   Hover styles are applied per-component with Tailwind, but a press had no
+   feedback at all on touch, where there is no hover to begin with. A small
+   scale on active gives every button the same physical acknowledgement. */
+@media (prefers-reduced-motion: no-preference) {
+  button:not(:disabled):active,
+  [role="button"]:not([aria-disabled="true"]):active,
+  a[href]:active {
+    transform: scale(0.97);
+  }
+}
+
 /* Visible keyboard focus everywhere — never remove without a replacement */
 :focus-visible {
   outline: 2px solid var(--accent);
