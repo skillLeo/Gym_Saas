@@ -3301,3 +3301,140 @@ uses numbered pagination.
   targeted regression smoke test above was run specifically because this session's two
   app-wide changes (morphMap, exception handler) *could* plausibly have broken something
   outside Phase 10's own surfaces.
+
+---
+
+# PHASE 11 — AI FOOD LOGGING (Snap · Say · Type)
+
+Photograph a meal, speak it, or type it, and get a draft list of foods to
+check before anything is saved. Operational detail lives in `AI_SETUP.md`;
+this records what was built and what was decided.
+
+## The rule the whole feature is built around
+
+**The model never supplies a number that reaches the journal.** It is asked
+two things: what food is this, and roughly how many grams. The response schema
+has no calorie or macro field, so there is nowhere to put an invented one even
+if it tried. Every calorie comes from USDA FoodData Central, looked up
+server-side from the label and scaled from their per-100 g figures, or from a
+food the member created themselves.
+
+The portion estimate *is* the model's, and the review screen says so with a
+confidence note, because a portion guessed from a photograph is a guess.
+
+## Shape
+
+- `POST /api/ai/food-log/analyze` — photo, voice or text in, draft out. Saves
+  nothing.
+- `POST /api/ai/food-log/confirm` — the member's corrected list, written
+  through `FoodJournal`.
+
+Two steps always. There is deliberately no one-shot path, because a guess must
+be seen before it becomes a number in someone's food diary.
+
+## Model choice
+
+Checked against OpenAI's live documentation rather than recalled.
+
+- **`gpt-6-luna`** for photos and text — the cheapest model they publish that
+  has both `image_input` and `structured_outputs`, which this cannot work
+  without. `gpt-5-nano` is cheaper but text-only.
+- **`gpt-transcribe`** for speech — *not* `gpt-4o-mini-transcribe`, which looks
+  cheaper per minute but whose model page reports status **Deprecated**.
+
+Model names are read from the environment so a rename is an `.env` edit.
+
+## Found by making real calls, not by reading docs
+
+- **`temperature: 0` is rejected outright** by the current models with a 400.
+  Sending it made every request fail, which the app honestly reported as the
+  provider being unavailable — the feature would have shipped dead. Now opt-in,
+  with a regression test.
+- **`ImageManager::read()` does not exist** in Intervention 4.0.3; it is
+  `decode()`. Would have broken every photo upload. Caught by a test before any
+  live call.
+- **A photo of people returns `food_found: false`** rather than an invented
+  plate.
+
+## Cost and latency, measured
+
+| | per call |
+|---|---|
+| Photo | $0.00036 (~1,182 in / ~450 out tokens), ~9 s |
+| Text | $0.00009 |
+| Voice | $0.0045 per minute, on the real recording length |
+
+About 22,000 photos inside the default $8 monthly cap.
+
+Three optimisations, each measured:
+
+- **Parallel USDA lookups.** A plate yields six or more labels; they were
+  sequential. 16,285 ms → 6,258 ms (−62%).
+- **Normalised 7-day cache**, keyed on a lowercased, whitespace-collapsed
+  query, because the model's labels vary in capitalisation.
+- **1024 px instead of 1280 px.** −28% input tokens. Label agreement between
+  the sizes was 58%, but the control — the same photo twice at 1280 — agreed
+  with itself only 62%, so the saving is inside the model's own noise.
+
+## Prompt injection
+
+Structural before textual. Four real attempts against the live model, two
+typed and two photographed onto a café menu: nothing was forced to 0 g, no
+prompt was echoed, and "reveal your system prompt" returned `food_found:
+false` with an empty list. The schema is the defence that actually holds —
+there is no field an injected instruction could be answered in.
+
+## Privacy
+
+Photos are re-encoded through GD before sending, which drops every EXIF block
+including GPS; the browser does the same before upload, so location never
+leaves the phone. Uploads are deleted in a `finally` block and never copied to
+storage. `store: false` on every request. `ai_usage_logs` holds numbers, a
+status and a model name — no prompts, no transcripts, no food names.
+
+## Safety rails
+
+Kill switch, testing mode, $8 monthly cap, 20 successful logs per member per
+day, 4 attempts per minute — all admin-editable live. `ai_features_enabled` is
+`false` for every member on migration. Consent is a timestamp plus the version
+of the notice shown, is required server-side, and is withdrawable from the
+member's own Settings.
+
+Every refusal carries `fallback: manual`, because a limit on an optional
+convenience must never read as the food journal being closed.
+`AiFailureIsContainedTest` walks the ordinary member surfaces in four
+different failure states and asserts they all still work.
+
+## Work done to the existing code along the way
+
+- **`FoodJournal` extracted** from `FoodLogController` so manual, barcode and
+  AI logging write an identical row. Proven unchanged by a characterization
+  suite run before and after, plus eight live HTTP calls with identical
+  sha256.
+- **`from-api` was silently discarding** `external_food_id`, `brand`,
+  `serving_weight_grams`, `fiber_g`, `sugar_g` and `sodium_mg` — they had no
+  validation rules, and `validate()` returns only ruled keys. Every food logged
+  from search or barcode had been losing its brand and micronutrients.
+- **The two write paths disagreed** about what makes two external foods the
+  same, so one USDA food could be stored twice depending on which screen the
+  member used first. One shared key now. `php artisan foods:report-duplicates`
+  lists what is already there, read-only.
+- **Four migrations were MySQL-only** (`utf8mb4_bin`, `FULLTEXT`, `SHOW
+  INDEX/COLUMNS`) and the test suite could not boot at all. Now driver-aware;
+  MySQL output verified byte-identical against a fresh migrate.
+- **Voice was billed at a flat 60 s** because webm carries no readable
+  duration. The client now reports it and the server sanity-checks it against
+  file size. $0.0045 → $0.000212 on a real clip.
+- **The old Photo Log and Voice Log tiles are hidden** for members who have the
+  new entry. The old Photo Log takes a photo for show and then asks the member
+  to type a description — it never looks at the image.
+
+## Not verified
+
+- **A real voice recording of human speech.** The transcription path is
+  exercised end to end and bills correctly, but every clip sent was generated
+  audio, so "two eggs and toast" has never actually been spoken into it. Needs
+  a person with a microphone.
+- **Anything against a real USDA key.** Local development ran on the shared
+  `DEMO_KEY` throughout, whose hourly quota is roughly four photos' worth.
+- **Nothing was deployed.** Entirely localhost.
