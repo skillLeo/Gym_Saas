@@ -19,10 +19,12 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { useI18nStore } from '@/store/i18nStore';
+import { AiFoodLogSheet } from '@/components/food/ai/AiFoodLogSheet';
+import { fetchAiStatus, type AiStatus } from '@/lib/aiFoodLog';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 
 type FoodOption = {
-  nutritionix_id?: string | null;
+  external_food_id?: string | null;
   name: string;
   brand?: string | null;
   serving_qty: number;
@@ -102,6 +104,14 @@ export default function FoodJournalPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
 
+  /*
+   * Snap / Say / Type. Null until the status call answers, and the entry point
+   * stays hidden unless this member actually has access — a control that
+   * appears and then refuses is worse than one that was never there.
+   */
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [showAiSheet, setShowAiSheet] = useState(false);
+
   // Meal slot management
   const [showManageMeals, setShowManageMeals] = useState(false);
   const [editingSlotId, setEditingSlotId] = useState<number | null>(null);
@@ -138,6 +148,10 @@ export default function FoodJournalPage() {
   }, [t]);
 
   useEffect(() => { loadDay(date); }, [date, loadDay]);
+
+  // Once per visit. The flag rarely changes and a failed call simply leaves
+  // the entry point hidden.
+  useEffect(() => { void fetchAiStatus().then(setAiStatus); }, []);
 
   useEffect(() => {
     api.get('/food/recent')
@@ -408,6 +422,34 @@ export default function FoodJournalPage() {
           </div>
         </Card>
 
+        {/*
+          * Snap / Say / Type.
+          *
+          * Hidden entirely unless this member has it — `available` covers the
+          * kill switch, the per-member flag, the budget and the limits, and
+          * `consent_required` is the one "no" that the member can resolve
+          * themselves, so it still shows and opens the notice.
+          */}
+        {aiStatus && (aiStatus.available || aiStatus.consent_required) && (
+          <button
+            type="button"
+            onClick={() => setShowAiSheet(true)}
+            className="w-full mb-3 flex items-center gap-3 rounded-md border border-accent/40 bg-accent-subtle px-4 py-3 cursor-pointer hover:border-accent transition-colors text-left"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent/15">
+              <Camera size={18} className="text-accent" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-body font-semibold text-content-primary">
+                {t('aiFood.entry.title')}
+              </span>
+              <span className="block text-caption text-content-secondary">
+                {t('aiFood.entry.subtitle')}
+              </span>
+            </span>
+          </button>
+        )}
+
         {/* Quick Log Buttons */}
         <div className="grid grid-cols-4 gap-2.5 mb-5">
           <Link href="/food-journal/barcode">
@@ -675,6 +717,20 @@ export default function FoodJournalPage() {
         </Card>
 
       </div>
+
+      {aiStatus && (
+        <AiFoodLogSheet
+          open={showAiSheet}
+          onClose={() => setShowAiSheet(false)}
+          status={aiStatus}
+          slots={meals.map((m) => ({ slot_id: m.slot_id, name: m.name }))}
+          defaultSlotId={meals[0]?.slot_id ?? null}
+          date={dateParam}
+          onSaved={() => { void loadDay(date); void fetchAiStatus().then(setAiStatus); }}
+          onLogManually={() => setShowAddFood(meals[0]?.slot_id ?? null)}
+          onStatusChange={setAiStatus}
+        />
+      )}
 
       {/* Manage Meals modal */}
       {showManageMeals && (
