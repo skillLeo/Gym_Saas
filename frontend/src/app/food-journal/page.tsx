@@ -112,6 +112,17 @@ export default function FoodJournalPage() {
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [showAiSheet, setShowAiSheet] = useState(false);
 
+  /*
+   * True only once the status call has come back AND says this member has the
+   * new entry. Defaults to false while it is still null, so the old tiles are
+   * what a member sees during the first moments of the page rather than a gap
+   * that fills in — and a member whose status call fails keeps every way in
+   * they had before.
+   */
+  const hideLegacyCaptureTiles = Boolean(
+    aiStatus && (aiStatus.available || aiStatus.consent_required)
+  );
+
   // Meal slot management
   const [showManageMeals, setShowManageMeals] = useState(false);
   const [editingSlotId, setEditingSlotId] = useState<number | null>(null);
@@ -450,29 +461,51 @@ export default function FoodJournalPage() {
           </button>
         )}
 
-        {/* Quick Log Buttons */}
-        <div className="grid grid-cols-4 gap-2.5 mb-5">
+        {/*
+          * Quick log.
+          *
+          * Photo Log and Voice Log are HIDDEN for members who have the new
+          * camera/voice/text entry above, because the two are not the same
+          * thing and showing both is a trap: the old Photo Log takes a
+          * photograph for show and then asks the member to type a description
+          * — it never looks at the image. Offering that beside a control that
+          * genuinely reads the photo invites people to pick the one that does
+          * less work.
+          *
+          * They stay exactly as they were for everyone else, which is still
+          * most members while the feature is in testing. Barcode and Create
+          * food are never hidden: neither overlaps with the new entry, and
+          * Create food is the only way in that needs no food database at all.
+          */}
+        <div
+          className={`grid gap-2.5 mb-5 ${hideLegacyCaptureTiles ? 'grid-cols-2' : 'grid-cols-4'}`}
+        >
           <Link href="/food-journal/barcode">
             <button className="w-full flex flex-col items-center gap-1.5 py-3 px-2 rounded-md bg-surface-raised border border-border-subtle hover:border-accent/50 transition-all shadow-sm">
               <Barcode size={20} className="text-accent" />
               <span className="text-xs font-medium text-content-secondary">{t('foodJournal.scanBarcode')}</span>
             </button>
           </Link>
-          <Link href="/food-journal/photo-log">
-            <button className="w-full flex flex-col items-center gap-1.5 py-3 px-2 rounded-md bg-surface-raised border border-border-subtle hover:border-[#004AAD]/50 transition-all shadow-sm">
-              <Camera size={20} className="text-brand-blue-deep" />
-              <span className="text-xs font-medium text-content-secondary">{t('foodJournal.photoLog')}</span>
-            </button>
-          </Link>
-          <Link href="/food-journal/voice-log">
-            <button className="w-full flex flex-col items-center gap-1.5 py-3 px-2 rounded-md bg-surface-raised border border-border-subtle hover:border-[#10B981]/50 transition-all shadow-sm">
-              <Mic size={20} className="text-[#10B981]" />
-              <span className="text-xs font-medium text-content-secondary">{t('foodJournal.voiceLog')}</span>
-            </button>
-          </Link>
-          {/* The fourth way in, and the only one that works without a food
-              database behind it. Barcode, photo and voice all depend on
-              Nutritionix; entering a food by hand does not. */}
+
+          {!hideLegacyCaptureTiles && (
+            <>
+              <Link href="/food-journal/photo-log">
+                <button className="w-full flex flex-col items-center gap-1.5 py-3 px-2 rounded-md bg-surface-raised border border-border-subtle hover:border-[#004AAD]/50 transition-all shadow-sm">
+                  <Camera size={20} className="text-brand-blue-deep" />
+                  <span className="text-xs font-medium text-content-secondary">{t('foodJournal.photoLog')}</span>
+                </button>
+              </Link>
+              <Link href="/food-journal/voice-log">
+                <button className="w-full flex flex-col items-center gap-1.5 py-3 px-2 rounded-md bg-surface-raised border border-border-subtle hover:border-[#10B981]/50 transition-all shadow-sm">
+                  <Mic size={20} className="text-[#10B981]" />
+                  <span className="text-xs font-medium text-content-secondary">{t('foodJournal.voiceLog')}</span>
+                </button>
+              </Link>
+            </>
+          )}
+
+          {/* The way in that works without a food database behind it. Barcode,
+              photo and voice all depend on one; entering a food by hand does not. */}
           <Link href="/food-journal/custom-food">
             <button className="w-full flex flex-col items-center gap-1.5 py-3 px-2 rounded-md bg-surface-raised border border-border-subtle hover:border-brand-yellow/50 transition-all shadow-sm">
               <PencilLine size={20} className="text-brand-yellow" />
