@@ -61,7 +61,8 @@ class FoodAnalyzer
      * This wording is the second layer, for the portion estimate — the one
      * number the model does supply.
      */
-    private const SYSTEM_PROMPT = <<<'TXT'
+    /** Public so tests and measurements exercise the real prompt, not a copy. */
+    public const SYSTEM_PROMPT = <<<'TXT'
     You identify food and drink so a person can log what they ate.
 
     Return each distinct food with a short plain label, the portion you can
@@ -149,18 +150,30 @@ class FoodAnalyzer
      */
     private function withUsdaMatches(array $draft): array
     {
+        $drafted = $draft['items'] ?? [];
+
+        /*
+         * Every label looked up at once, rather than one after another.
+         *
+         * Three matches each, not one: the top hit for "toast" is frequently
+         * not the one a person means, and offering a short list is the
+         * difference between the member correcting a guess and the member
+         * accepting a wrong number because it was the only option shown.
+         *
+         * A plate of food produces six or more labels, and six sequential
+         * lookups were putting seven to ten seconds of pure waiting into a
+         * request a member is watching. They do not depend on each other.
+         */
+        $byLabel = $this->usda->searchMany(
+            array_map(static fn ($i) => (string) $i['label'], $drafted),
+            3,
+        );
+
         $items = [];
 
-        foreach (($draft['items'] ?? []) as $item) {
+        foreach ($drafted as $item) {
             $grams = max(0.0, (float) ($item['grams'] ?? 0));
-
-            /*
-             * Three matches, not one. The top hit for "toast" is frequently
-             * not the one a person means, and offering a short list is the
-             * difference between the member correcting a guess and the member
-             * accepting a wrong number because it was the only option shown.
-             */
-            $hits = $this->usda->search((string) $item['label'], 3);
+            $hits  = $byLabel[(string) $item['label']] ?? [];
 
             $matches = [];
             foreach (array_slice($hits, 0, 3) as $hit) {

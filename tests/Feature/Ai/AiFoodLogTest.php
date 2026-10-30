@@ -161,9 +161,13 @@ class AiFoodLogTest extends TestCase
             $raw  = base64_decode(substr($image, strlen('data:image/jpeg;base64,')));
             $size = getimagesizefromstring($raw);
 
-            // 2400x1400 scaled down to the configured 1280 long edge.
-            $this->assertSame(1280, $size[0]);
-            $this->assertSame(747, $size[1]);
+            // 2400x1400 scaled down to whatever long edge is configured, with
+            // the aspect ratio kept. Read from config rather than hardcoded, so
+            // tuning the edge for cost does not require editing a test that is
+            // really about re-encoding and downscaling happening at all.
+            $edge = (int) config('ai.uploads.image_max_edge');
+            $this->assertSame($edge, $size[0]);
+            $this->assertSame((int) round(1400 * $edge / 2400), $size[1]);
 
             return true;
         });
