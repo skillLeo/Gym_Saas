@@ -74,11 +74,18 @@ jobs:
             grep -rl "localhost:" .next/static/chunks/ | head -3
             exit 1
           fi
-          if ! grep -rql "gyms.skillleo.com" .next/static/chunks/; then
-            echo "FAIL: the production API origin is not in the bundle — it would call nothing."
+          # The bundle must NOT contain an absolute API origin. Laravel and
+          # Next.js share one origin on this host, so the client uses a relative
+          # "/api" and inherits the page's scheme. An absolute https:// origin
+          # baked in here pinned every API call to a scheme the subdomain has no
+          # certificate for, which broke the site in the browser while the pages
+          # themselves still loaded — a failure that does not show up in a build.
+          if grep -rqlE "https?://[a-z0-9.-]*myextremetrainer\.com" .next/static/chunks/; then
+            echo "FAIL: an absolute API origin is baked into the bundle; it must be relative."
+            grep -rlE "https?://[a-z0-9.-]*myextremetrainer\.com" .next/static/chunks/ | head -3
             exit 1
           fi
-          echo "OK: bundle targets gyms.skillleo.com, no localhost references."
+          echo "OK: bundle uses a relative same-origin /api, no localhost references."
 
       # `.next/cache` and `.next/dev` are build/dev scratch space, not runtime
       # artefacts — 3.2GB of the former on a local build. Ship neither.
@@ -100,7 +107,7 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
           source: next-build.tar.gz
-          target: /home/u290685119/
+          target: /home/myextremetrainer/
 
       # ── Deploy both halves over SSH ──────────────────────────────────
       #
@@ -118,9 +125,14 @@ jobs:
           command_timeout: 15m
           script: |
             set -e
+            # UNVERIFIED ON THIS HOST. These two paths are carried over from the
+            # previous server and have not been confirmed on the Namecheap plan —
+            # there was no shell access when the domain was switched. Confirm both
+            # over SSH (port 21098) with `ls /opt/alt/` before trusting a green run;
+            # a wrong path fails loudly at the first command, which is the point.
             PHP=/opt/alt/php83/usr/bin/php
             NODE=/opt/alt/alt-nodejs22/root/usr/bin/node
-            APP=/home/u290685119/domains/gyms.skillleo.com/public_html
+            APP=/home/myextremetrainer/test.myextremetrainer.com
             cd $APP
 
             echo "==> PHP in use..."
@@ -149,7 +161,7 @@ jobs:
             # frontend at all and no way back without another deploy.
             rm -rf .next.incoming
             mkdir -p .next.incoming
-            tar xzf /home/u290685119/next-build.tar.gz -C .next.incoming
+            tar xzf /home/myextremetrainer/next-build.tar.gz -C .next.incoming
             if [ ! -f .next.incoming/.next/BUILD_ID ]; then
               echo "FAIL: unpacked build has no BUILD_ID — keeping the current one."
               rm -rf .next.incoming
@@ -175,7 +187,7 @@ jobs:
             cd $APP/frontend
             NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 \
               setsid nohup $NODE node_modules/next/dist/bin/next start -p 3210 -H 127.0.0.1 \
-              >> /home/u290685119/next.log 2>&1 < /dev/null &
+              >> /home/myextremetrainer/next.log 2>&1 < /dev/null &
             sleep 12
             curl -s -o /dev/null -w "next on 3210: %{http_code}\n" --max-time 15 http://127.0.0.1:3210/
 
@@ -189,5 +201,5 @@ jobs:
             echo "==> Permissions..."
             chmod -R 775 storage bootstrap/cache
 
-            rm -f /home/u290685119/next-build.tar.gz
+            rm -f /home/myextremetrainer/next-build.tar.gz
             echo "==> Deployed."

@@ -58,7 +58,22 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
-            'engine' => null,
+            /*
+             * Leave unset locally (server default) but overridable in production.
+             *
+             * The shared host's default engine is MyISAM, which broke `migrate`
+             * outright: "Specified key was too long; max key length is 1000
+             * bytes" on password_reset_tokens, whose primary key is a
+             * varchar(255) — 1020 bytes under utf8mb4. InnoDB with DYNAMIC row
+             * format allows 3072.
+             *
+             * The engine matters far beyond that error: MyISAM has no
+             * transactions and SILENTLY IGNORES foreign keys, so the schema
+             * would have looked fine while every cascade and constraint in it
+             * did nothing. Set DB_ENGINE="InnoDB ROW_FORMAT=DYNAMIC" in .env on
+             * any host whose default is not already InnoDB.
+             */
+            'engine' => env('DB_ENGINE'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
@@ -78,7 +93,8 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
-            'engine' => null,
+            // Same reasoning as the mysql connection above.
+            'engine' => env('DB_ENGINE'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
