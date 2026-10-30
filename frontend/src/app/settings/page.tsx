@@ -8,8 +8,9 @@ import { useI18nStore, LOCALES } from '@/store/i18nStore';
 import { Card } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
-import { LogOut, Bell, Scale, Globe, PanelLeft, LayoutPanelTop, Palette, Moon } from 'lucide-react';
+import { LogOut, Bell, Scale, Globe, PanelLeft, LayoutPanelTop, Palette, Moon, Camera } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import { fetchAiStatus, type AiStatus } from '@/lib/aiFoodLog';
 
 const ACCENT_OPTIONS = ['#F87404', '#0000FF', '#FF0404', '#10B981', '#7C3AED', '#DB2777', '#004AAD', '#FFC000'];
 
@@ -28,12 +29,52 @@ export default function SettingsPage() {
   // This was previously local-only state: the switch moved, toasted nothing,
   // and reverted on reload because it was never sent anywhere.
   const [notifications, setNotifications] = useState(user?.email_notifications ?? true);
+
+  /*
+   * Photo / voice / text logging. Null until the status call answers; the row
+   * is hidden entirely for members who do not have the feature, so Settings
+   * never advertises something they cannot use.
+   */
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [savingAi, setSavingAi] = useState(false);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (user) setNotifications(user.email_notifications ?? true);
   }, [user]);
+
+  useEffect(() => { void fetchAiStatus().then(setAiStatus); }, []);
+
+  /**
+   * Withdrawing clears the stored consent, which blocks every AI call for
+   * this member immediately. Granting it again writes the same record back.
+   * Nothing else about the account changes either way.
+   */
+  const handleAiConsentChange = async (next: boolean) => {
+    if (!aiStatus) return;
+
+    setSavingAi(true);
+    try {
+      const api = (await import('@/lib/api')).default;
+
+      if (next) {
+        await api.post('/ai/consent', { version: aiStatus.consent_version, accepted: true });
+      } else {
+        await api.delete('/ai/consent');
+      }
+
+      // Re-read rather than assume: the server decides what the state now is.
+      const fresh = await fetchAiStatus();
+      if (fresh) setAiStatus(fresh);
+
+      toast.success(next ? t('settings.aiFood.on') : t('settings.aiFood.off'));
+    } catch {
+      toast.error(t('settings.aiFood.failed'));
+    } finally {
+      setSavingAi(false);
+    }
+  };
 
   const handleNotificationsChange = async (next: boolean) => {
     const previous = notifications;
@@ -49,6 +90,28 @@ export default function SettingsPage() {
       toast.error(t('settings.saveFailed'));
     } finally {
       setSavingNotifications(false);
+    }
+  };
+
+  /**
+   * Language now lives on the account (users.locale), not just this browser's
+   * localStorage — otherwise it stayed device-scoped, and the next member to
+   * sign in on the same computer inherited whoever left the language switched
+   * last. setLocale() below still updates the local store immediately so the
+   * screen changes language without waiting on the network; the API call is
+   * what makes that choice follow the account to any other device.
+   */
+  const handleLanguageChange = async (next: typeof locale) => {
+    const previous = locale;
+    setLocale(next);
+    try {
+      const api = (await import('@/lib/api')).default;
+      const res = await api.put('/auth/user', { locale: next });
+      setUser(res.data.data);
+      toast.success(t('settings.language.changed'));
+    } catch {
+      setLocale(previous);
+      toast.error(t('settings.saveFailed'));
     }
   };
   const { mode, setMode, accentColor, setAccentColor } = useLayoutStore();
@@ -203,6 +266,37 @@ export default function SettingsPage() {
             </button>
           </div>
 
+          {/*
+            * Photo, voice and text logging.
+            *
+            * Shown only to members who actually have the feature: `available`
+            * covers the kill switch, the flag and the limits, and
+            * `consent_required` is the state where they have it but have not
+            * agreed yet — which is exactly when a toggle is useful.
+            */}
+          {aiStatus && (aiStatus.available || aiStatus.consent_required) && (
+            <div className="flex items-center justify-between pt-4 border-t border-border-subtle">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-md bg-accent-surface flex items-center justify-center">
+                  <Camera size={15} className="text-accent" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-content-primary">{t('settings.aiFood')}</p>
+                  <p className="text-xs text-content-secondary">{t('settings.aiFood.desc')}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => handleAiConsentChange(aiStatus.consent_required)}
+                disabled={savingAi}
+                aria-pressed={!aiStatus.consent_required}
+                aria-label={t('settings.aiFood.toggle')}
+                className={`w-11 h-6 shrink-0 cursor-pointer rounded-full relative transition-all duration-200 disabled:opacity-60 ${!aiStatus.consent_required ? 'bg-accent' : 'bg-gray-200 dark:bg-white/20'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all duration-200 ${!aiStatus.consent_required ? 'left-6' : 'left-1'}`} />
+              </button>
+            </div>
+          )}
+
           {/* Language */}
           <div className="flex items-center justify-between pt-4 border-t border-border-subtle">
             <div className="flex items-center gap-3">
@@ -222,7 +316,7 @@ export default function SettingsPage() {
                 <button key={loc.id} type="button" lang={loc.id}
                   aria-pressed={locale === loc.id}
                   aria-label={`${loc.english} — ${loc.label}`}
-                  onClick={() => { setLocale(loc.id); toast.success(t('settings.language.changed')); }}
+                  onClick={() => handleLanguageChange(loc.id)}
                   className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${locale === loc.id ? 'bg-accent text-white' : 'text-content-secondary hover:text-content-primary dark:hover:text-white'}`}>
                   <span className="font-mono tracking-wide opacity-70">{loc.region}</span>
                   <span className="hidden sm:inline">{loc.label}</span>

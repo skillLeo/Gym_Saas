@@ -1748,5 +1748,11 @@
   "aiFood.consent.withdraw": "Vous pouvez le désactiver à tout moment dans les Réglages.",
   "aiFood.consent.accept": "J'ai compris — continuer",
   "aiFood.saved.one": "Ajouté à votre journal.",
-  "aiFood.saved.many": "{count} éléments ajoutés à votre journal."
+  "aiFood.saved.many": "{count} éléments ajoutés à votre journal.",
+  "settings.aiFood": "Saisie par photo, voix et texte",
+  "settings.aiFood.desc": "Envoie photos, enregistrements ou descriptions à un service d’IA pour identifier les aliments",
+  "settings.aiFood.toggle": "Activer ou désactiver la saisie par photo, voix et texte",
+  "settings.aiFood.on": "La saisie par photo, voix et texte est activée.",
+  "settings.aiFood.off": "Désactivé. La saisie manuelle est inchangée.",
+  "settings.aiFood.failed": "Enregistrement impossible. Veuillez réessayer."
 }

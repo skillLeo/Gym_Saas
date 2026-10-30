@@ -1748,5 +1748,11 @@
   "aiFood.consent.withdraw": "Puedes desactivarlo cuando quieras en Ajustes.",
   "aiFood.consent.accept": "Lo entiendo — continuar",
   "aiFood.saved.one": "Añadido a tu diario.",
-  "aiFood.saved.many": "{count} elementos añadidos a tu diario."
+  "aiFood.saved.many": "{count} elementos añadidos a tu diario.",
+  "settings.aiFood": "Registro por foto, voz y texto",
+  "settings.aiFood.desc": "Envía fotos, grabaciones o descripciones a un servicio de IA para identificar alimentos",
+  "settings.aiFood.toggle": "Activar o desactivar el registro por foto, voz y texto",
+  "settings.aiFood.on": "El registro por foto, voz y texto está activado.",
+  "settings.aiFood.off": "Desactivado. El registro manual no cambia.",
+  "settings.aiFood.failed": "No hemos podido guardarlo. Inténtalo de nuevo."
 }

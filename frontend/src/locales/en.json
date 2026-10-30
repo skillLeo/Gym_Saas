@@ -1748,5 +1748,11 @@
   "aiFood.consent.withdraw": "You can turn this off again at any time in Settings.",
   "aiFood.consent.accept": "I understand — continue",
   "aiFood.saved.one": "Added to your journal.",
-  "aiFood.saved.many": "{count} items added to your journal."
+  "aiFood.saved.many": "{count} items added to your journal.",
+  "settings.aiFood": "Photo, voice and text logging",
+  "settings.aiFood.desc": "Send photos, recordings or descriptions to an AI service to identify foods",
+  "settings.aiFood.toggle": "Turn photo, voice and text logging on or off",
+  "settings.aiFood.on": "Photo, voice and text logging is on.",
+  "settings.aiFood.off": "Switched off. Manual logging is unchanged.",
+  "settings.aiFood.failed": "We could not save that. Please try again."
 }
