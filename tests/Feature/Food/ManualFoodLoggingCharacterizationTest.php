@@ -475,12 +475,21 @@ class ManualFoodLoggingCharacterizationTest extends TestCase
 
     public function test_from_api_totals_come_from_the_matched_row(): void
     {
-        // Pre-create the row the lookup WILL match — same external id, same
-        // name. An existing record's numbers still win over the ones in the
-        // request, which is unchanged behaviour: firstOrCreate() only writes
-        // its second argument when it has to create.
+        // Pre-create the row the lookup WILL match. The key is now
+        // (external_food_id, food_source, is_custom), shared with the AI
+        // confirm path, so the source has to be set for this row to be found.
+        //
+        // That is a real consequence of unifying the key: a row written before
+        // the fix has external_food_id but no food_source, so the next log of
+        // that food creates a fresh record rather than reusing it. One extra
+        // row per food, once. `php artisan foods:report-duplicates` lists them.
+        //
+        // An existing record's numbers still win over the ones in the request,
+        // which is unchanged: firstOrCreate() only writes its second argument
+        // when it has to create.
         FoodItem::create([
             'external_food_id' => '1234567',
+            'food_source'      => 'usda',
             'name'             => 'Apple, raw',
             'is_custom'        => false,
             'serving_qty'      => 100,

@@ -106,46 +106,40 @@ class DuplicateFoodTest extends TestCase
         $this->assertSame('usda', $food->food_source);
     }
 
-    public function test_the_legacy_path_records_the_id_but_not_the_source(): void
+    public function test_the_legacy_path_records_the_id_and_the_source(): void
     {
         $this->logViaLegacy();
 
         $food = FoodItem::sole();
         $this->assertSame('1102644', $food->external_food_id);
 
-        // PINNED: food_source is never written by this endpoint, so a row it
-        // created cannot match the AI path's key, which includes it.
-        $this->assertNull($food->food_source);
+        // FIXED. food_source is written now, which is what lets a row made
+        // here be found by the AI path — and vice versa.
+        $this->assertSame('usda', $food->food_source);
     }
 
     // ------------------------------------------- the duplication itself
 
-    public function test_the_same_food_down_both_paths_is_stored_twice(): void
+    public function test_the_same_food_down_both_paths_is_stored_once(): void
     {
         $this->logViaLegacy();
         $this->logViaAi();
 
-        // PINNED: one real apple, two records. Both journal entries are
-        // correct on their own; the waste and the confusion are in food_items,
-        // and anything that counts distinct foods sees two.
-        $this->assertSame(2, FoodItem::where('external_food_id', '1102644')->count());
+        // FIXED. One real apple, one record, two journal entries pointing at
+        // it — whichever screen the member used.
+        $this->assertSame(1, FoodItem::where('external_food_id', '1102644')->count());
         $this->assertDatabaseCount('food_log_entries', 2);
     }
 
-    public function test_the_duplication_is_one_directional(): void
+    public function test_the_order_no_longer_matters(): void
     {
-        // AI first, then legacy: only ONE row. The legacy key is
-        // (external_food_id, name, is_custom), which the AI's row satisfies.
+        // It used to: legacy-first made two rows and AI-first made one,
+        // because only the AI key looked at food_source. Both orders now end
+        // in the same single record.
         $this->logViaAi();
         $this->logViaLegacy();
 
         $this->assertSame(1, FoodItem::where('external_food_id', '1102644')->count());
-
-        // The asymmetry is the AI key including food_source, which a legacy
-        // row never has — so legacy-first duplicates and AI-first does not.
-        // Pinned because it means the damage depends on which screen a member
-        // happened to use first, which is not something to reason about from
-        // the code alone.
         $this->assertSame('usda', FoodItem::sole()->food_source);
     }
 

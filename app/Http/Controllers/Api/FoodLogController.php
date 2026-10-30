@@ -133,25 +133,10 @@ class FoodLogController extends Controller
             return response()->json(['success' => false, 'error' => 'Unauthorized.'], 403);
         }
 
-        $fd = $validated['food_data'];
-
-        // Find or create food item
-        $food = FoodItem::firstOrCreate(
-            ['external_food_id' => $fd['external_food_id'] ?? null, 'name' => $fd['name'], 'is_custom' => false],
-            [
-                'brand'                => $fd['brand'] ?? null,
-                'serving_qty'          => $fd['serving_qty'],
-                'serving_unit'         => $fd['serving_unit'],
-                'serving_weight_grams' => $fd['serving_weight_grams'] ?? null,
-                'calories'             => $fd['calories'],
-                'protein_g'            => $fd['protein_g'],
-                'carbs_g'              => $fd['carbs_g'],
-                'fat_g'                => $fd['fat_g'],
-                'fiber_g'              => $fd['fiber_g'] ?? null,
-                'sugar_g'              => $fd['sugar_g'] ?? null,
-                'sodium_mg'            => $fd['sodium_mg'] ?? null,
-            ]
-        );
+        // Shared with the AI confirm endpoint, so the same USDA food is one
+        // record however the member logged it. See FoodJournal for why the
+        // two paths used to disagree.
+        $food = $this->journal->findOrCreateExternalFood($validated['food_data']);
 
         $entry = $this->journal->log(
             $request->user(),

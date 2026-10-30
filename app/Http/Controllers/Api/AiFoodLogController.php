@@ -276,34 +276,10 @@ class AiFoodLogController extends Controller
             ]);
         }
 
-        $data = $item['food'];
-
-        /*
-         * Keyed on the external id and source when there is one, so two
-         * genuinely different USDA foods that share a name stay separate.
-         * The legacy /food-log/from-api endpoint matches on name alone and
-         * collapses them — a known bug, pinned by the characterization test
-         * and deliberately not inherited here.
-         */
-        $key = filled($data['external_food_id'] ?? null)
-            ? ['external_food_id' => (string) $data['external_food_id'], 'food_source' => 'usda', 'is_custom' => false]
-            : ['external_food_id' => null, 'name' => $data['name'], 'is_custom' => false];
-
-        return FoodItem::firstOrCreate($key, [
-            'name'                 => $data['name'],
-            'brand'                => $data['brand'] ?? null,
-            'food_source'          => filled($data['external_food_id'] ?? null) ? 'usda' : null,
-            'serving_qty'          => $data['serving_qty'],
-            'serving_unit'         => $data['serving_unit'],
-            'serving_weight_grams' => $data['serving_weight_grams'] ?? null,
-            'calories'             => $data['calories'],
-            'protein_g'            => $data['protein_g'],
-            'carbs_g'              => $data['carbs_g'],
-            'fat_g'                => $data['fat_g'],
-            'fiber_g'              => $data['fiber_g'] ?? null,
-            'sugar_g'              => $data['sugar_g'] ?? null,
-            'sodium_mg'            => $data['sodium_mg'] ?? null,
-        ]);
+        // Shared with /food-log/from-api, so the same USDA food is one record
+        // however the member logged it. See FoodJournal for the key and for
+        // why the two paths used to disagree about it.
+        return $this->journal->findOrCreateExternalFood($item['food']);
     }
 
     /**

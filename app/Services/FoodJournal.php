@@ -91,6 +91,59 @@ class FoodJournal
     }
 
     /**
+     * The FoodItem for an external food record, created once and reused after.
+     *
+     * THE KEY IS HERE SO THAT THERE IS ONLY ONE OF IT. The legacy from-api
+     * endpoint and the AI confirm endpoint previously disagreed about what
+     * makes two external foods the same, and the disagreement was invisible
+     * from either file:
+     *
+     *     legacy : (external_food_id, name, is_custom)
+     *     AI     : (external_food_id, food_source, is_custom)
+     *
+     * Since from-api never wrote food_source, the AI key could not match a
+     * row from-api had made — but the legacy key, not looking at food_source,
+     * matched the AI's rows happily. One real apple therefore became two
+     * records or one depending on which screen the member used first.
+     *
+     * Keyed on the identifier and its source when there is one, because that
+     * pair is what actually identifies a food: two different USDA records can
+     * share a name, and the same id can mean different things in different
+     * databases. With no external id there is nothing to key on but the name.
+     */
+    public function findOrCreateExternalFood(array $data): FoodItem
+    {
+        $externalId = filled($data['external_food_id'] ?? null)
+            ? (string) $data['external_food_id']
+            : null;
+
+        // Defaults to usda rather than null: every caller that supplies an
+        // external id today is relaying a FoodData Central record, and a null
+        // source is what made the two keys fail to meet in the first place.
+        $source = $externalId !== null ? ($data['food_source'] ?? 'usda') : null;
+
+        $key = $externalId !== null
+            ? ['external_food_id' => $externalId, 'food_source' => $source, 'is_custom' => false]
+            : ['external_food_id' => null, 'name' => $data['name'], 'is_custom' => false];
+
+        return FoodItem::firstOrCreate($key, [
+            'name'                 => $data['name'],
+            'brand'                => $data['brand'] ?? null,
+            'food_source'          => $source,
+            'serving_qty'          => $data['serving_qty'],
+            'serving_unit'         => $data['serving_unit'],
+            'serving_weight_grams' => $data['serving_weight_grams'] ?? null,
+            'calories'             => $data['calories'],
+            'protein_g'            => $data['protein_g'],
+            'carbs_g'              => $data['carbs_g'],
+            'fat_g'                => $data['fat_g'],
+            'fiber_g'              => $data['fiber_g'] ?? null,
+            'sugar_g'              => $data['sugar_g'] ?? null,
+            'sodium_mg'            => $data['sodium_mg'] ?? null,
+        ]);
+    }
+
+    /**
      * Per-entry totals: multiply by servings, round to two places.
      *
      * Two places, not one — the per-slot and per-day totals round to one, but
