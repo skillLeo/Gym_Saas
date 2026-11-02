@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/Button';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import {
-  Search, Eye, Ban, Trash2, UserPlus, Loader2, RotateCcw,
+  Search, Eye, Ban, Trash2, UserPlus, Loader2, RotateCcw, Camera,
 } from 'lucide-react';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 
@@ -23,6 +23,7 @@ type User = {
   created_at:    string;
   account_state: AccountState;
   is_admin:      boolean;
+  ai_features_enabled: boolean;
 };
 
 const STATE_BADGE: Record<AccountState, 'orange' | 'green' | 'red' | 'gray'> = {
@@ -92,6 +93,29 @@ export default function AdminUsersPage() {
       toast.success(`${user.name} is now ${STATE_LABEL[state].toLowerCase()}.`);
     } catch {
       toast.error('Failed to update this account.');
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  /**
+   * Switch photo/voice/text food logging on or off for one member.
+   *
+   * The server is the authority on the result, so the row is updated from what
+   * it returns rather than from what we asked for — an admin account is
+   * refused with 422 (`member_only`), and optimistically flipping the switch
+   * would leave the UI claiming something the database does not agree with.
+   */
+  const setAiAccess = async (user: User, enabled: boolean) => {
+    setActingId(user.id);
+    try {
+      const res = await api.post(`/admin/users/${user.id}/ai-features`, { enabled });
+      const now = Boolean(res.data?.data?.ai_features_enabled);
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, ai_features_enabled: now } : u));
+      toast.success(res.data?.message ?? (now ? 'Switched on.' : 'Switched off.'));
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error ?? 'Could not change AI access for this member.');
     } finally {
       setActingId(null);
     }
@@ -171,7 +195,13 @@ export default function AdminUsersPage() {
             <div className="divide-y divide-gray-50 dark:divide-white/[0.04]">
               {users.map(user => (
                 <div key={user.id} className="sm:grid grid-cols-12 gap-4 px-5 py-4 flex items-center hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-colors">
-                  <div className="col-span-5 flex items-center gap-3 mb-2 sm:mb-0">
+                  {/*
+                    min-w-0 + flex-1 so the name/email column gives way instead
+                    of pushing the action buttons off the right edge. Below the
+                    `sm` grid this row is a plain flex row, and a long email was
+                    enough to clip the controls entirely at 375px.
+                  */}
+                  <div className="col-span-5 flex items-center gap-3 mb-2 sm:mb-0 min-w-0 flex-1">
                     <Avatar user={user} />
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-content-primary truncate flex items-center gap-1.5">
@@ -197,11 +227,36 @@ export default function AdminUsersPage() {
                       ? <Badge variant="green" size="sm">Full access</Badge>
                       : <Badge variant={STATE_BADGE[user.account_state]} size="sm">{STATE_LABEL[user.account_state]}</Badge>}
                   </div>
-                  <div className="col-span-2 flex gap-1.5">
+                  <div className="col-span-2 flex gap-1.5 shrink-0">
                     <Link href={`/admin/users/${user.id}`}
                       className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 text-content-tertiary hover:text-brand-blue-deep transition-colors">
                       <Eye size={13} />
                     </Link>
+                    {/*
+                      Photo/voice/text logging, per member. Admins are excluded
+                      because they have no personal food journal — the server
+                      refuses them with 422, so the control is disabled rather
+                      than offering an action that cannot succeed.
+                    */}
+                    <button
+                      onClick={() => setAiAccess(user, !user.ai_features_enabled)}
+                      disabled={actingId === user.id || user.is_admin}
+                      aria-pressed={user.ai_features_enabled}
+                      title={
+                        user.is_admin
+                          ? 'Admins have no food journal, so AI logging does not apply'
+                          : user.ai_features_enabled
+                            ? 'AI food logging is ON — click to turn off'
+                            : 'AI food logging is OFF — click to turn on'
+                      }
+                      className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors disabled:opacity-40 ${
+                        user.ai_features_enabled
+                          ? 'bg-accent-surface text-accent hover:bg-accent/20'
+                          : 'text-content-tertiary hover:bg-gray-100 dark:hover:bg-white/10 hover:text-accent'
+                      }`}
+                    >
+                      {actingId === user.id ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />}
+                    </button>
                     {user.account_state === 'deactivated' ? (
                       <button onClick={() => setAccountState(user, 'trial')} disabled={actingId === user.id}
                         title="Reactivate"

@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { Switch } from '@/components/ui/Controls';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { Loader2, Utensils, Dumbbell, MessageCircle, Shield, ShieldOff } from 'lucide-react';
@@ -16,7 +17,8 @@ type AccountState = 'trial' | 'subscriber' | 'grace' | 'deactivated';
 interface UserDetail {
   id: number; name: string; username: string | null; email: string; avatar: string | null;
   bio: string | null; created_at: string; email_verified_at: string | null;
-  account_state: AccountState; is_admin: boolean; onboarding_completed: boolean;
+  account_state: AccountState; is_admin: boolean; ai_features_enabled: boolean;
+  onboarding_completed: boolean;
   trial_starts_at: string | null; trial_ends_at: string | null;
   deactivated_at: string | null; scheduled_deletion_at: string | null;
   active_subscription: { status: string; current_period_end: string | null } | null;
@@ -64,6 +66,28 @@ export default function AdminUserDetailPage() {
       load();
     } catch {
       toast.error('Failed to update admin access.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /**
+   * Photo/voice/text food logging for this one member.
+   *
+   * Reloads from the server rather than trusting the request, matching the
+   * other handlers here: an admin account is refused with 422 (`member_only`),
+   * and the screen should show what is true, not what was attempted.
+   */
+  const toggleAiAccess = async (enabled: boolean) => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const res = await api.post(`/admin/users/${user.id}/ai-features`, { enabled });
+      toast.success(res.data?.message ?? (enabled ? 'Switched on.' : 'Switched off.'));
+      load();
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error ?? 'Failed to update AI access.');
     } finally {
       setSaving(false);
     }
@@ -158,6 +182,27 @@ export default function AdminUserDetailPage() {
               icon={user.is_admin ? <ShieldOff size={14} /> : <Shield size={14} />}>
               {user.is_admin ? 'Remove admin access' : 'Grant admin access'}
             </Button>
+
+            {/*
+              Admins are not offered this: they have no personal food journal,
+              so there is nothing for the feature to write to and the server
+              refuses them. Saying why is more use than a disabled switch.
+            */}
+            <div className="pt-3 border-t border-border-subtle">
+              {user.is_admin ? (
+                <p className="text-xs text-content-tertiary">
+                  AI food logging does not apply to admin accounts — they have no food journal.
+                </p>
+              ) : (
+                <Switch
+                  checked={user.ai_features_enabled}
+                  onChange={toggleAiAccess}
+                  disabled={saving}
+                  label="Photo, voice and text food logging"
+                  description="Lets this member photograph, speak or type a meal. Testing mode on the AI Usage screen must also be satisfied."
+                />
+              )}
+            </div>
           </div>
         </Card>
 

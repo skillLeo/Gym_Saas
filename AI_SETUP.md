@@ -14,7 +14,8 @@ on for one person, what it costs, and how to turn it off in a hurry.
 2. Put a real USDA key in `.env` as `USDA_API_KEY` (see the warning below).
 3. `php artisan config:clear`
 4. Admin → **AI Usage** → check "API key: Set".
-5. Admin → **Manage Users** → switch the feature on for one member.
+5. Admin → **Manage Users** → click the **camera icon** on that member's row.
+   It turns orange when the feature is on.
 6. That member opens Food Journal, taps **Add with camera, voice or text**,
    reads the notice once, and uses it.
 
@@ -72,7 +73,22 @@ Two gates, both of which must be open.
 members individually switched on can use the feature. That is what lets you
 try it on your own account without the whole member base spending money.
 
-**Per member** (Admin → Manage Users) switches one person on.
+**Per member** is switched in either of two places, whichever you have open:
+
+- **Admin → Manage Users** — a camera icon in each row's Actions column.
+  Orange means on, grey means off; hover it to read the current state.
+- **Admin → Manage Users → (eye icon) → Manage account** — a labelled
+  switch, *"Photo, voice and text food logging"*.
+
+Both call the same endpoint and either will do.
+
+**Admin accounts cannot be switched on.** An admin has no personal food
+journal, so there is nothing for the feature to write to; the control is
+disabled in both screens and the server refuses it with a 422 regardless. If
+you want to try the feature yourself, use a member account.
+
+Everything here is done in the browser. No shell, no `artisan`, no database
+access is needed to operate this feature.
 
 Turn testing mode OFF and every member gets it, with the monthly budget as the
 only thing limiting total spend. Do that deliberately.

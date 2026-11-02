@@ -261,6 +261,10 @@ class AdminController extends Controller
             'created_at'    => $u->created_at,
             'account_state' => $u->account_state,
             'is_admin'      => (bool) $u->is_admin,
+            // Drives the per-member AI switch in the list. Sent here rather
+            // than fetched per row, so the toggle renders in its real state on
+            // first paint instead of flicking from off to on.
+            'ai_features_enabled' => (bool) $u->ai_features_enabled,
         ]);
 
         return response()->json($paginated);
@@ -282,6 +286,7 @@ class AdminController extends Controller
             'email_verified_at'    => $user->email_verified_at,
             'account_state'        => $user->account_state,
             'is_admin'             => (bool) $user->is_admin,
+            'ai_features_enabled'  => (bool) $user->ai_features_enabled,
             'onboarding_completed' => (bool) $user->onboarding_completed,
             'trial_starts_at'      => $user->trial_starts_at,
             'trial_ends_at'        => $user->trial_ends_at,
