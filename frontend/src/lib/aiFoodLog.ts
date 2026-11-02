@@ -33,6 +33,13 @@ export interface NutritionForEstimate {
 export interface UsdaMatch {
   external_food_id: string | null;
   source: string;
+  /**
+   * Which half of FoodData Central this came from: a curated generic food, or
+   * a supermarket product. Shown in the picker because the names alone do not
+   * make it obvious, and the two can differ by several hundred calories for
+   * what looks like the same food.
+   */
+  kind: 'generic' | 'brand';
   name: string;
   brand: string | null;
   serving_qty: number;
@@ -54,6 +61,12 @@ export interface DraftItem {
   unit: string;
   grams_estimate: number;
   confidence: 'low' | 'medium' | 'high';
+  /**
+   * The top match shares fewer than half its words with the drafted label, so
+   * it may well be a different food. Decided server-side with the same
+   * tokenising that ranks the matches, rather than re-implemented here.
+   */
+  match_uncertain?: boolean;
   usda_matches: UsdaMatch[];
 }
 
@@ -73,6 +86,8 @@ export interface ReviewRow {
   label: string;
   grams: number;
   confidence: DraftItem['confidence'];
+  /** Carried from DraftItem.match_uncertain; see the note there. */
+  uncertain?: boolean;
   matches: UsdaMatch[];
   /** Index into `matches`, or -1 when nothing is chosen yet. */
   chosen: number;
@@ -248,7 +263,10 @@ export interface ConfirmItem {
   grams?: number;
   servings?: number;
   food_item_id?: number;
-  food?: Omit<UsdaMatch, 'nutrition_for_estimate' | 'source'>;
+  // `kind` is excluded with the rest: it tells the member whether a match is
+  // a generic food or a packet, which is a display concern. The food record
+  // stored in the journal is identified by external_food_id and food_source.
+  food?: Omit<UsdaMatch, 'nutrition_for_estimate' | 'source' | 'kind'>;
 }
 
 export async function confirm(payload: {

@@ -37,12 +37,24 @@ class FoodAnalyzer
                     'type'       => 'object',
                     'properties' => [
                         'label'    => ['type' => 'string'],
+                        /*
+                         * The same food under the name the US database files
+                         * it by: porridge -> oatmeal, wholemeal -> whole
+                         * wheat, aubergine -> eggplant.
+                         *
+                         * This is a SEARCH TERM, not a number. The model is
+                         * still forbidden from supplying nutrition — it is
+                         * only being asked what to look the food up under,
+                         * which is a language question it is good at and the
+                         * lookup cannot answer for itself.
+                         */
+                        'search_name' => ['type' => 'string'],
                         'quantity' => ['type' => 'number'],
                         'unit'     => ['type' => 'string', 'enum' => ['g', 'ml', 'oz', 'cup', 'piece']],
                         'grams'    => ['type' => 'number'],
                         'confidence' => ['type' => 'string', 'enum' => ['low', 'medium', 'high']],
                     ],
-                    'required'             => ['label', 'quantity', 'unit', 'grams', 'confidence'],
+                    'required'             => ['label', 'search_name', 'quantity', 'unit', 'grams', 'confidence'],
                     'additionalProperties' => false,
                 ],
             ],
@@ -68,6 +80,15 @@ class FoodAnalyzer
     Return each distinct food with a short plain label, the portion you can
     see or hear described, and your best estimate of its weight in grams.
     Use confidence "low" when you are guessing at the portion size.
+
+    Also give search_name: the same food written as the US Department of
+    Agriculture food database would name it, so it can be looked up. Use the
+    ordinary American word, singular, with no brand and no adjectives about
+    the portion. Examples: porridge -> "oatmeal", wholemeal bread -> "whole
+    wheat bread", aubergine -> "eggplant", courgette -> "zucchini", prawns ->
+    "shrimp", rocket -> "arugula". When the label is already the ordinary US
+    name, repeat it unchanged. This is only a search term: it must never
+    change which food you reported in label.
 
     If there is no food or drink, set food_found to false and return an empty
     items list. Never invent a food to fill the list.
@@ -164,9 +185,26 @@ class FoodAnalyzer
          * lookups were putting seven to ten seconds of pure waiting into a
          * request a member is watching. They do not depend on each other.
          */
+        /*
+         * The model's US spelling travels with each label as an alternate
+         * query. The lookup uses it when the label itself finds nothing that
+         * is plainly the same food — "porridge" is not a word FoodData
+         * Central knows, and asking it for one returns oatmeal BREAD.
+         */
+        $alternates = [];
+        foreach ($drafted as $i) {
+            $label = (string) $i['label'];
+            $alt   = trim((string) ($i['search_name'] ?? ''));
+
+            if ($alt !== '' && mb_strtolower($alt) !== mb_strtolower($label)) {
+                $alternates[$label] = $alt;
+            }
+        }
+
         $byLabel = $this->usda->searchMany(
             array_map(static fn ($i) => (string) $i['label'], $drafted),
             3,
+            $alternates,
         );
 
         $items = [];
@@ -186,6 +224,16 @@ class FoodAnalyzer
                 'unit'              => (string) ($item['unit'] ?? 'g'),
                 'grams_estimate'    => $grams,
                 'confidence'        => (string) ($item['confidence'] ?? 'low'),
+                /*
+                 * The top match barely resembles what was drafted — fewer than
+                 * half the words of "wholemeal toast" appear in it. The review
+                 * screen says so next to that row, because the member is the
+                 * only one who can tell whether it is the right food, and a
+                 * plausible calorie number beside a wrong name is the most
+                 * expensive thing this feature can produce.
+                 */
+                'match_uncertain'   => $matches !== []
+                    && $this->usda->overlap((string) $item['label'], (string) $matches[0]['name']) < 0.5,
                 /*
                  * An empty list is a real, useful answer: the UI offers manual
                  * search or a custom food. It is not the same as the lookup

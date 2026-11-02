@@ -175,8 +175,14 @@ function Row({
         <div className="min-w-0">
           <p className="text-body font-medium text-content-primary truncate">{row.label}</p>
           {/* Plain words, not a percentage or a coloured bar. "Low confidence"
-              means nothing to most people; "check this one" is actionable. */}
-          {row.confidence === 'low' && (
+              means nothing to most people; "check this one" is actionable.
+
+              Two separate doubts, one message. The model may be unsure what
+              the food was (confidence), or sure of the food while the database
+              returned something that barely resembles it — "wholemeal toast"
+              answered by a rusk cracker. The member's action is the same
+              either way: open the list and look. */}
+          {(row.confidence === 'low' || row.uncertain) && (
             <p className="text-caption text-warning">{t('aiFood.review.checkThisOne')}</p>
           )}
         </div>
@@ -197,9 +203,14 @@ function Row({
           label={t('aiFood.review.whichFood')}
           value={String(row.chosen)}
           onChange={(v) => onChange({ chosen: Number(v), manual: undefined })}
+          /* Every option says whether it is a generic food or a packet. A
+             branded "GREEK YOGURT" and "Yogurt, Greek, plain, lowfat" look
+             equally authoritative in a dropdown and differ by 400 kcal. */
           options={row.matches.map((m, i) => ({
             value: String(i),
-            label: m.brand ? `${m.name} (${m.brand})` : m.name,
+            label: `${m.brand ? `${m.name} (${m.brand})` : m.name} · ${
+              m.kind === 'brand' ? t('aiFood.review.kindBrand') : t('aiFood.review.kindGeneric')
+            }`,
           }))}
         />
       )}

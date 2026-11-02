@@ -45,6 +45,25 @@ class UsdaSearchManyTest extends TestCase
         ];
     }
 
+    /**
+     * A fake that answers with a food NAMED AFTER the query.
+     *
+     * The lookup now searches the curated data types first and only falls
+     * back to branded products when nothing came back resembling the query.
+     * A fake that answers every request with "Apples, raw" therefore makes
+     * every label except "apple" take the fallback too, and the request
+     * counts below would be measuring that rather than what they mean to.
+     */
+    private function fakeEchoingTheQuery(): void
+    {
+        Http::fake(function (Request $request) {
+            parse_str((string) parse_url((string) $request->url(), PHP_URL_QUERY), $q);
+            $term = (string) ($q['query'] ?? 'food');
+
+            return Http::response(['foods' => [$this->food(ucfirst($term).', raw')]]);
+        });
+    }
+
     private function usda(): UsdaFoodData
     {
         return app(UsdaFoodData::class);
@@ -62,7 +81,7 @@ class UsdaSearchManyTest extends TestCase
 
     public function test_each_label_is_fetched_once(): void
     {
-        Http::fake(['*api.nal.usda.gov*' => Http::response(['foods' => [$this->food('Apples, raw')]])]);
+        $this->fakeEchoingTheQuery();
 
         $this->usda()->searchMany(['apple', 'toast', 'egg']);
 
@@ -71,7 +90,7 @@ class UsdaSearchManyTest extends TestCase
 
     public function test_duplicate_labels_are_fetched_once_but_both_get_results(): void
     {
-        Http::fake(['*api.nal.usda.gov*' => Http::response(['foods' => [$this->food('Apples, raw')]])]);
+        $this->fakeEchoingTheQuery();
 
         $out = $this->usda()->searchMany(['apple', 'toast', 'apple']);
 
@@ -83,7 +102,7 @@ class UsdaSearchManyTest extends TestCase
 
     public function test_a_second_call_costs_no_network_at_all(): void
     {
-        Http::fake(['*api.nal.usda.gov*' => Http::response(['foods' => [$this->food('Apples, raw')]])]);
+        $this->fakeEchoingTheQuery();
 
         $first  = $this->usda()->searchMany(['apple', 'toast']);
         Http::assertSentCount(2);
@@ -97,7 +116,7 @@ class UsdaSearchManyTest extends TestCase
 
     public function test_the_cache_key_is_normalised(): void
     {
-        Http::fake(['*api.nal.usda.gov*' => Http::response(['foods' => [$this->food('Apples, raw')]])]);
+        $this->fakeEchoingTheQuery();
 
         $this->usda()->searchMany(['Scrambled Eggs']);
         Http::assertSentCount(1);
@@ -160,9 +179,14 @@ class UsdaSearchManyTest extends TestCase
 
     public function test_more_labels_than_the_concurrency_cap_all_resolve(): void
     {
-        Http::fake(['*api.nal.usda.gov*' => Http::response(['foods' => [$this->food('Something')]])]);
+        $this->fakeEchoingTheQuery();
 
-        $labels = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l'];
+        // Real words, not single letters: "a" is a stopword, so it tokenises
+        // to nothing, cannot be judged against any candidate, and takes the
+        // branded fallback — which would make this count one request too many
+        // for a reason that has nothing to do with batching.
+        $labels = ['apple', 'toast', 'egg', 'rice', 'beans', 'pear',
+            'kale', 'tuna', 'oats', 'milk', 'plum', 'corn'];
         $out    = $this->usda()->searchMany($labels);
 
         // Twelve labels, a cap of five: three batches, nothing dropped.

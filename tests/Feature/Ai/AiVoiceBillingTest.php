@@ -193,7 +193,7 @@ class AiVoiceBillingTest extends TestCase
                 'output' => [['content' => [['type' => 'output_text', 'text' => json_encode([
                     'food_found' => true,
                     'items'      => [[
-                        'label' => 'apple', 'quantity' => 1, 'unit' => 'piece',
+                        'label' => 'apple', 'search_name' => 'apple', 'quantity' => 1, 'unit' => 'piece',
                         'grams' => 182, 'confidence' => 'high',
                     ]],
                 ])]]]],

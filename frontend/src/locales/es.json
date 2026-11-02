@@ -1715,6 +1715,8 @@
   "aiFood.review.pickAFood": "Elige un alimento para ver las calorías",
   "aiFood.review.noMatch": "Nada en la base de datos coincide con esto. Búscalo abajo o quítalo.",
   "aiFood.review.sourceUsda": "Nutrición de USDA FoodData Central",
+  "aiFood.review.kindGeneric": "genérico",
+  "aiFood.review.kindBrand": "marca",
   "aiFood.review.removeItem": "Quitar este elemento",
   "aiFood.review.addItem": "Añadir otro alimento",
   "aiFood.review.searchFood": "Buscar un alimento",

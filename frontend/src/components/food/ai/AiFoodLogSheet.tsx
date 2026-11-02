@@ -136,6 +136,7 @@ export function AiFoodLogSheet({
             label: item.label,
             grams: item.grams_estimate,
             confidence: item.confidence,
+            uncertain: item.match_uncertain === true,
             matches: item.usda_matches,
             // Pre-select the top match, since that is what the member is most
             // likely to want — but every row shows the alternatives and the
