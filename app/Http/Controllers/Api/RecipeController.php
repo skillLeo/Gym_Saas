@@ -295,12 +295,13 @@ class RecipeController extends Controller
         $fatPerServing   = ($recipe->fat      ?? 0) / $perServing;
         $fiberPerServing = ($recipe->fiber    ?? 0) / $perServing;
 
-        // Ensure a food item exists for this recipe (keyed by nutritionix_id)
-        $nutritionixId = 'recipe_' . $recipe->id;
-        $foodItem = FoodItem::where('nutritionix_id', $nutritionixId)->first();
+        // Ensure a food item exists for this recipe (keyed by external_food_id)
+        $externalId = 'recipe_' . $recipe->id;
+        $foodItem = FoodItem::where('external_food_id', $externalId)->first();
         if (!$foodItem) {
             $foodItem = FoodItem::create([
-                'nutritionix_id'  => $nutritionixId,
+                'external_food_id' => $externalId,
+                'food_source'      => 'recipe',
                 'name'            => $recipe->name,
                 'brand'           => 'My Recipes',
                 'serving_qty'     => 1,

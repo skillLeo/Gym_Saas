@@ -28,7 +28,7 @@ function OAuthCallbackContent() {
       .get('/auth/user')
       .then((res) => {
         const user = res.data.data;
-        setAuth(user, token);
+        setAuth(user, token, true);
         document.cookie = `auth_token=${token}; path=/; max-age=2592000`;
         toast.success(`Welcome, ${user.name}`);
         if (!user.email_verified) {

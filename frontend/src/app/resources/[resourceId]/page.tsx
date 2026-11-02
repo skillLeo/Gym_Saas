@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useI18nStore } from '@/store/i18nStore';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Download, Loader2 } from 'lucide-react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
@@ -30,6 +30,7 @@ import {
  */
 export default function ResourceViewerPage() {
   const { t } = useI18nStore();
+  const router = useRouter();
   const params = useParams();
   const id = Number(params?.resourceId);
 
@@ -110,7 +111,7 @@ export default function ResourceViewerPage() {
           <ErrorState
             title={t('resourceDetail.unavailable')}
             description={error ?? t('resourceDetail.notFound')}
-            onRetry={() => window.location.assign('/resources')}
+            onRetry={() => router.push('/resources')}
             retryLabel={t('resourceDetail.back')}
           />
         ) : (

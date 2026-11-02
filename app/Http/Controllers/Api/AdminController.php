@@ -27,8 +27,8 @@ class AdminController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'smtp'        => SystemSetting::getGroup('smtp'),
-                'nutritionix' => SystemSetting::getGroup('nutritionix'),
+                'smtp' => SystemSetting::getGroup('smtp'),
+                'usda' => SystemSetting::getGroup('usda'),
             ],
         ]);
     }
@@ -58,20 +58,24 @@ class AdminController extends Controller
         return response()->json(['success' => true, 'message' => 'SMTP settings saved.']);
     }
 
-    public function updateNutritionix(Request $request): \Illuminate\Http\JsonResponse
+    /**
+     * USDA FoodData Central takes a single api.data.gov key — no app id, unlike
+     * the Nutritionix pair this replaced.
+     */
+    public function updateFoodApi(Request $request): \Illuminate\Http\JsonResponse
     {
         $this->assertAdmin($request);
         $v = $request->validate([
-            'nutritionix_app_id'  => 'required|string|max:255',
-            'nutritionix_app_key' => 'required|string|max:255',
+            'usda_api_key' => 'required|string|max:255',
         ]);
-        SystemSetting::set('nutritionix_app_id', $v['nutritionix_app_id'], 'nutritionix', false);
 
-        // Same masking hazard as the SMTP password — never write the mask back.
-        if ($v['nutritionix_app_key'] !== SystemSetting::MASK) {
-            SystemSetting::set('nutritionix_app_key', $v['nutritionix_app_key'], 'nutritionix', true);
+        // Same masking hazard as the SMTP password — never write the mask back,
+        // or the stored key becomes the literal bullet characters.
+        if ($v['usda_api_key'] !== SystemSetting::MASK) {
+            SystemSetting::set('usda_api_key', $v['usda_api_key'], 'usda', true);
         }
-        return response()->json(['success' => true, 'message' => 'Nutritionix API keys saved.']);
+
+        return response()->json(['success' => true, 'message' => 'USDA FoodData Central key saved.']);
     }
 
     public function testSmtp(Request $request): \Illuminate\Http\JsonResponse
@@ -119,26 +123,31 @@ class AdminController extends Controller
         }
     }
 
-    public function testNutritionix(Request $request): \Illuminate\Http\JsonResponse
+    /**
+     * Prove the key works by doing a real lookup rather than just checking the
+     * field is non-empty — an invalid key still looks configured otherwise.
+     */
+    public function testFoodApi(Request $request, \App\Services\UsdaFoodData $usda): \Illuminate\Http\JsonResponse
     {
         $this->assertAdmin($request);
-        $appId  = SystemSetting::get('nutritionix_app_id',  env('NUTRITIONIX_APP_ID'));
-        $appKey = SystemSetting::get('nutritionix_app_key', env('NUTRITIONIX_APP_KEY'));
-        if (!$appId || !$appKey) {
-            return response()->json(['success' => false, 'error' => 'API keys not configured yet.'], 422);
+
+        if (! $usda->configured()) {
+            return response()->json(['success' => false, 'error' => 'No USDA API key configured yet.'], 422);
         }
-        try {
-            $res = Http::withHeaders([
-                'x-app-id'  => $appId,
-                'x-app-key' => $appKey,
-            ])->timeout(10)->get('https://trackapi.nutritionix.com/v2/search/instant', ['query' => 'chicken']);
-            if ($res->successful()) {
-                return response()->json(['success' => true, 'message' => 'Nutritionix API keys are valid ✓']);
-            }
-            return response()->json(['success' => false, 'error' => "API returned HTTP {$res->status()}. Check your keys."], 422);
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+
+        $results = $usda->search('chicken breast', 3);
+
+        if ($results === []) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'The key was rejected, or FoodData Central returned nothing. Check the key at api.data.gov.',
+            ], 422);
         }
+
+        return response()->json([
+            'success' => true,
+            'message'  => 'USDA FoodData Central is connected ✓ (test search returned '.count($results).' foods, e.g. "'.$results[0]['name'].'")',
+        ]);
     }
 
     // ── Dashboard Stats ──────────────────────────────────────────────────────

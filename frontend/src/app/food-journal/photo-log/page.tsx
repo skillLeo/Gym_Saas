@@ -15,7 +15,7 @@ import toast from 'react-hot-toast';
 
 interface FoodItem {
   name: string; calories: number; protein_g: number; carbs_g: number; fat_g: number;
-  serving_qty: number; serving_unit: string; nutritionix_id: string | null;
+  serving_qty: number; serving_unit: string; external_food_id: string | null;
 }
 interface MealSlot { id: number; name: string; sort_order: number }
 
@@ -83,7 +83,7 @@ export default function PhotoLogPage() {
           fat_g:         item.fat_g,
           serving_qty:   item.serving_qty,
           serving_unit:  item.serving_unit,
-          nutritionix_id: item.nutritionix_id,
+          external_food_id: item.external_food_id,
         },
         meal_slot_id: selectedSlot,
         logged_date:  new Date().toISOString().slice(0, 10),

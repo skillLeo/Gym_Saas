@@ -1,10 +1,11 @@
 'use client';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import { useI18nStore } from '@/store/i18nStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Field';
 import { Switch } from '@/components/ui/Controls';
@@ -28,6 +29,7 @@ function LoginForm() {
   // wrong.
   const expired = useSearchParams()?.get('expired') === '1';
   const { setAuth } = useAuthStore();
+  const { t } = useI18nStore();
   const [form, setForm] = useState({ email: '', password: '', remember: false });
   const [showPass, setShowPass] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -40,15 +42,22 @@ function LoginForm() {
     try {
       const res = await api.post('/auth/login', { email, password, remember });
       const { token, user } = res.data.data;
-      setAuth(user, token);
-      const maxAge = remember ? 2592000 : 86400;
-      document.cookie = `auth_token=${token}; path=/; max-age=${maxAge}`;
+      setAuth(user, token, remember);
+      // "Keep me signed in" unchecked -> a session cookie (no max-age), which
+      // Chrome/every browser clears the moment it fully closes. That's the
+      // actual mechanism behind "ask for the password again next time the
+      // browser is opened" — no expiry timer of ours could tell "closed the
+      // browser" from "still open an hour later" the way this does for free.
+      // Checked -> a real 30-day cookie, matching the token's own 30-day
+      // server-side expiry (see AuthController::login).
+      const cookieAttrs = remember ? '; max-age=2592000' : '';
+      document.cookie = `auth_token=${token}; path=/${cookieAttrs}`;
       // The Next.js middleware runs at the edge with no access to localStorage,
       // so the role has to travel in a cookie for it to redirect on it. This is
       // a NAVIGATION hint only — a user can edit it, so nothing is trusted to
       // it. The real boundary is the API: 'admin' and 'member' middleware.
-      document.cookie = `user_role=${user.is_admin ? 'admin' : 'member'}; path=/; max-age=${maxAge}`;
-      toast.success(`Welcome${user.is_admin ? '' : ' back'}, ${user.name}`);
+      document.cookie = `user_role=${user.is_admin ? 'admin' : 'member'}; path=/${cookieAttrs}`;
+      toast.success(t(user.is_admin ? 'auth.login.welcomeAdmin' : 'auth.login.welcomeMember', { name: user.name }));
       if (!user.email_verified) {
         router.replace('/auth/verify-email');
       } else {
@@ -57,7 +66,7 @@ function LoginForm() {
         );
       }
     } catch (err) {
-      setErrors({ general: getErrorMessage(err, 'Invalid email or password.') });
+      setErrors({ general: getErrorMessage(err, t('auth.login.invalidCredentials')) });
       setForm((v) => ({ ...v, email, password: '' }));
     } finally {
       setLoading(false);
@@ -72,14 +81,14 @@ function LoginForm() {
   return (
     <div className="flex flex-col gap-7">
       <header className="flex flex-col gap-2">
-        <h1 className="font-display text-display text-content-primary">Sign in</h1>
+        <h1 className="font-display text-display text-content-primary">{t('auth.login.title')}</h1>
         <p className="text-body text-content-secondary">
-          New here?{' '}
+          {t('auth.login.newHere')}{' '}
           <Link
             href="/auth/register"
             className="text-accent font-semibold underline underline-offset-2 hover:text-accent-hover"
           >
-            Start your free 30-day trial
+            {t('auth.login.startTrial')}
           </Link>
         </p>
       </header>
@@ -87,8 +96,8 @@ function LoginForm() {
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Input
           type="email"
-          label="Email"
-          placeholder="you@example.com"
+          label={t('auth.login.email')}
+          placeholder={t('auth.login.emailPlaceholder')}
           value={form.email}
           onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
           required
@@ -99,20 +108,20 @@ function LoginForm() {
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <label htmlFor="login-password" className="text-body-sm font-medium text-content-secondary">
-              Password
+              {t('auth.login.password')}
             </label>
             <Link
               href="/auth/forgot-password"
               className="text-caption font-medium text-accent hover:text-accent-hover"
             >
-              Forgot password?
+              {t('auth.login.forgotPassword')}
             </Link>
           </div>
           <div className="relative">
             <input
               id="login-password"
               type={showPass ? 'text' : 'password'}
-              placeholder="Your password"
+              placeholder={t('auth.login.passwordPlaceholder')}
               value={form.password}
               onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
               required
@@ -125,7 +134,7 @@ function LoginForm() {
             <button
               type="button"
               onClick={() => setShowPass((v) => !v)}
-              aria-label={showPass ? 'Hide password' : 'Show password'}
+              aria-label={t(showPass ? 'auth.login.hidePassword' : 'auth.login.showPassword')}
               className="absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 rounded-sm flex items-center justify-center text-content-tertiary hover:text-content-primary transition-colors"
             >
               {showPass ? <EyeOff size={18} strokeWidth={1.75} /> : <Eye size={18} strokeWidth={1.75} />}
@@ -136,11 +145,11 @@ function LoginForm() {
         <Switch
           checked={form.remember}
           onChange={(remember) => setForm((p) => ({ ...p, remember }))}
-          label="Keep me signed in for 30 days"
+          label={t('auth.login.rememberMe')}
         />
 
         {expired && !errors.general && (
-          <Alert tone="info">Your session has ended. Please sign in again.</Alert>
+          <Alert tone="info">{t('auth.login.sessionExpired')}</Alert>
         )}
         {errors.general && <Alert tone="error">{errors.general}</Alert>}
 
@@ -151,12 +160,12 @@ function LoginForm() {
           loading={loading}
           iconRight={<ArrowRight size={16} strokeWidth={2} />}
         >
-          {loading ? 'Signing in…' : 'Sign in'}
+          {loading ? t('auth.login.signingIn') : t('auth.login.signIn')}
         </Button>
 
         <div className="flex items-center gap-3">
           <span className="flex-1 h-px bg-border-subtle" />
-          <span className="text-overline font-semibold uppercase text-content-tertiary">or</span>
+          <span className="text-overline font-semibold uppercase text-content-tertiary">{t('auth.login.or')}</span>
           <span className="flex-1 h-px bg-border-subtle" />
         </div>
 
@@ -173,7 +182,7 @@ function LoginForm() {
             <path fill="#FBBC05" d="M4.46 10.52A4.8 4.8 0 0 1 4.2 9c0-.52.09-1.02.26-1.52V5.41H1.83A8 8 0 0 0 .98 9c0 1.29.31 2.51.85 3.59l2.63-2.07z" />
             <path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 8.98 1a8 8 0 0 0-7.15 4.41l2.63 2.07a4.79 4.79 0 0 1 4.52-3.3z" />
           </svg>
-          Continue with Google
+          {t('auth.login.continueWithGoogle')}
         </button>
       </form>
 
@@ -204,9 +213,9 @@ function LoginForm() {
       )}
 
       <p className="text-center text-caption text-content-tertiary">
-        By signing in you agree to our{' '}
-        <Link href="/terms" className="text-accent hover:underline">Terms of Service</Link> and{' '}
-        <Link href="/privacy" className="text-accent hover:underline">Privacy Policy</Link>.
+        {t('auth.login.termsPrefix')}{' '}
+        <Link href="/terms" className="text-accent hover:underline">{t('auth.login.termsOfService')}</Link> {t('auth.login.and')}{' '}
+        <Link href="/privacy" className="text-accent hover:underline">{t('auth.login.privacyPolicy')}</Link>.
       </p>
     </div>
   );

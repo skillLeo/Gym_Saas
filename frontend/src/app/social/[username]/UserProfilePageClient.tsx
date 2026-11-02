@@ -10,6 +10,7 @@ import {
   Share2, Users, ThumbsUp, Loader2, X, Plus, Layers, Pencil, Pin
 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import api from '@/lib/api';
@@ -50,6 +51,7 @@ export default function UserProfilePage() {
   const username = params?.username as string;
   const { user: me } = useAuthStore();
   const { t } = useI18nStore();
+  const router = useRouter();
 
   const [profile, setProfile]     = useState<ProfileUser | null>(null);
   const [posts, setPosts]         = useState<Post[]>([]);
@@ -197,7 +199,9 @@ export default function UserProfilePage() {
     setMessaging(true);
     try {
       const res = await api.post('/messages/start', { user_id: profile.id });
-      window.location.href = `/messages/${res.data.conversation.id}`;
+      // router.push, not window.location: a hard navigation tears down the app
+      // shell and repaints white before the messages page renders.
+      router.push(`/messages/${res.data.conversation.id}`);
     } catch {
       toast.error(t('socialProfile.toast.messageFailed'));
       setMessaging(false);

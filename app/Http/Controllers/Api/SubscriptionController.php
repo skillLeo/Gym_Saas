@@ -116,9 +116,12 @@ class SubscriptionController extends Controller
                 // callers keep working.
                 'account_state'       => $user->account_state,
                 'status'              => $user->subscription_status,
-                'on_trial'            => $user->isOnTrial(),
-                'trial_ends_at'       => $user->trial_ends_at,
-                'trial_days_remaining'=> $user->trialDaysRemaining(),
+                // Same reasoning as AuthController::userResponse — an admin's
+                // access never lapses, so the membership page must not count
+                // down at them. hasAccess() above already reports the truth.
+                'on_trial'            => $user->isOnTrial() && !$user->is_admin,
+                'trial_ends_at'       => $user->is_admin ? null : $user->trial_ends_at,
+                'trial_days_remaining'=> $user->is_admin ? 0 : $user->trialDaysRemaining(),
                 'subscription'        => $subscription ? [
                     'id'                  => $subscription->id,
                     'status'              => $subscription->status,

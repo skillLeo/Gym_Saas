@@ -9,7 +9,7 @@ import api from '@/lib/api';
  * Is automatic nutrition lookup actually available?
  *
  * `null` = not known yet (or the probe failed, which is not evidence of
- * anything). `false` = the server has no Nutritionix credentials, so barcode,
+ * anything). `false` = the server has no USDA FoodData Central key, so barcode,
  * photo log and voice log cannot resolve nutrition at all.
  */
 export function useFoodDbConnected(): boolean | null {
@@ -17,7 +17,9 @@ export function useFoodDbConnected(): boolean | null {
 
   useEffect(() => {
     api.get('/food/integration-status')
-      .then(res => setConnected(Boolean(res.data?.nutritionix)))
+      // `configured` is the provider-agnostic flag; the old `nutritionix` key is
+      // still sent as false purely so a stale cached bundle reads a defined value.
+      .then(res => setConnected(Boolean(res.data?.configured)))
       .catch(() => setConnected(null));
   }, []);
 
@@ -26,7 +28,7 @@ export function useFoodDbConnected(): boolean | null {
 
 /**
  * Barcode scanning, Photo Log and Voice Log all resolve nutrition through
- * Nutritionix. When no credentials are configured those endpoints return 503,
+ * USDA FoodData Central. When no key is configured those endpoints return 503,
  * and each screen handled that — but only *after* the member had scanned a
  * code, or taken a photo and typed a description. Until then the screens
  * advertised themselves as "AI Powered" and promised the nutrition would be

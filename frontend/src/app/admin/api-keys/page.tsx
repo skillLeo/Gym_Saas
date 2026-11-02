@@ -19,8 +19,10 @@ interface SmtpForm {
   mail_from_address: string; mail_from_name: string;
 }
 
-interface NutritionixForm {
-  nutritionix_app_id: string; nutritionix_app_key: string;
+interface FoodApiForm {
+  // USDA FoodData Central takes a single api.data.gov key — no app id, unlike
+  // the Nutritionix pair this replaced.
+  usda_api_key: string;
 }
 
 const DEFAULT_SMTP: SmtpForm = {
@@ -29,7 +31,7 @@ const DEFAULT_SMTP: SmtpForm = {
   mail_from_address: '', mail_from_name: 'My EXtreme Trainer'
 };
 
-const DEFAULT_NX: NutritionixForm = { nutritionix_app_id: '', nutritionix_app_key: '' };
+const DEFAULT_NX: FoodApiForm = { usda_api_key: '' };
 
 function StatusBadge({ status }: { status: 'idle' | 'ok' | 'error' }) {
   if (status === 'idle') return null;
@@ -59,12 +61,12 @@ const inputCls = "w-full bg-surface-sunken border border-border-strong rounded-m
  * and then reported success. An admin could enter SMTP credentials, see
  * "Settings saved successfully!" and "Test email sent!", and nothing whatsoever
  * had happened. The endpoints (GET /admin/settings, POST /admin/settings/smtp,
- * /settings/test-smtp, /settings/nutritionix, /settings/test-nutritionix) were
+ * /settings/test-smtp, /settings/food-api, /settings/test-food-api) were
  * already fully implemented in AdminController — only the frontend was faking.
  */
 export default function ApiKeysPage() {
   const [smtp, setSmtp] = useState<SmtpForm>(DEFAULT_SMTP);
-  const [nx, setNx] = useState<NutritionixForm>(DEFAULT_NX);
+  const [nx, setNx] = useState<FoodApiForm>(DEFAULT_NX);
   const [showSmtpPass, setShowSmtpPass] = useState(false);
   const [showNxKey, setShowNxKey] = useState(false);
   const [testEmail, setTestEmail] = useState('');
@@ -82,7 +84,7 @@ export default function ApiKeysPage() {
       .then((res) => {
         const d = res.data?.data ?? {};
         if (d.smtp) setSmtp((p) => ({ ...p, ...d.smtp }));
-        if (d.nutritionix) setNx((p) => ({ ...p, ...d.nutritionix }));
+        if (d.usda) setNx((p) => ({ ...p, ...d.usda }));
       })
       .catch(() => toast.error('Could not load saved settings.'))
       .finally(() => setLoading(false));
@@ -103,8 +105,8 @@ export default function ApiKeysPage() {
   const saveNx = async () => {
     setSavingNx(true);
     try {
-      await api.post('/admin/settings/nutritionix', nx);
-      toast.success('Nutritionix keys saved.');
+      await api.post('/admin/settings/food-api', nx);
+      toast.success('USDA FoodData Central key saved.');
     } catch (err) {
       toast.error(getErrorMessage(err, 'Could not save those keys.'));
     } finally {
@@ -130,12 +132,12 @@ export default function ApiKeysPage() {
   const testNx = async () => {
     setTestingNx(true); setNxStatus('idle');
     try {
-      await api.post('/admin/settings/test-nutritionix', nx);
+      await api.post('/admin/settings/test-food-api', nx);
       setNxStatus('ok');
-      toast.success('Nutritionix keys are valid.');
+      toast.success('USDA FoodData Central is connected.');
     } catch (err) {
       setNxStatus('error');
-      toast.error(getErrorMessage(err, 'Those keys were rejected by Nutritionix.'));
+      toast.error(getErrorMessage(err, 'That key was rejected by USDA FoodData Central.'));
     } finally {
       setTestingNx(false);
     }
@@ -250,7 +252,7 @@ export default function ApiKeysPage() {
           </div>
         </Card>
 
-        {/* Nutritionix Card */}
+        {/* USDA FoodData Central card */}
         <Card>
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-3">
@@ -258,7 +260,7 @@ export default function ApiKeysPage() {
                 <Zap size={18} className="text-accent" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-content-primary">Nutritionix API</h2>
+                <h2 className="text-sm font-bold text-content-primary">USDA FoodData Central</h2>
                 <p className="text-xs text-content-secondary">Powers food search, barcode scanning and nutrition data</p>
               </div>
             </div>
@@ -266,25 +268,20 @@ export default function ApiKeysPage() {
           </div>
 
           <div className="bg-accent/5 border border-accent/20 rounded-md px-4 py-3 mb-4 text-xs text-content-secondary leading-relaxed">
-            Get your free API keys at{' '}
-            <span className="text-accent font-semibold">developer.nutritionix.com</span>
-            {' '}· Free tier: 500 API calls/day · Required for food log & calorie tracking.
+            Get a free API key at{' '}
+            <span className="text-accent font-semibold">api.data.gov/signup</span>
+            {' '}· Free, no card, 1,000 requests/hour · 600,000+ foods · Required for the food log and calorie tracking.
           </div>
 
           <div className="space-y-4">
-            <FieldRow label="App ID" icon={Key}>
-              <input className={inputCls} placeholder="e.g. a1b2c3d4" value={nx.nutritionix_app_id}
-                onChange={e => setNx(p => ({ ...p, nutritionix_app_id: e.target.value }))} />
-            </FieldRow>
-
-            <FieldRow label="App Key (API Key)" icon={Lock}>
+            <FieldRow label="API Key" icon={Lock}>
               <div className="relative">
                 <input className={inputCls + ' pr-11'} type={showNxKey ? 'text' : 'password'}
                   placeholder="••••••••••••••••••••••••••••••••"
-                  value={nx.nutritionix_app_key}
-                  onChange={e => setNx(p => ({ ...p, nutritionix_app_key: e.target.value }))} />
+                  value={nx.usda_api_key}
+                  onChange={e => setNx(p => ({ ...p, usda_api_key: e.target.value }))} />
                 <button type="button" onClick={() => setShowNxKey(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-content-tertiary hover:text-content-secondary">
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-content-tertiary hover:text-content-secondary cursor-pointer">
                   {showNxKey ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
@@ -292,12 +289,12 @@ export default function ApiKeysPage() {
 
             <div className="flex gap-3">
               <button onClick={saveNx} disabled={savingNx}
-                className="flex-1 bg-accent hover:bg-accent-hover text-white font-bold py-3 rounded-md text-sm transition-all disabled:opacity-60">
-                {savingNx ? 'Saving…' : 'Save Nutritionix Keys'}
+                className="flex-1 bg-accent hover:bg-accent-hover text-white font-bold py-3 rounded-md text-sm transition-all disabled:opacity-60 cursor-pointer disabled:cursor-not-allowed">
+                {savingNx ? 'Saving…' : 'Save API Key'}
               </button>
               <button onClick={testNx} disabled={testingNx}
-                className="flex items-center gap-2 px-5 py-3 border-2 border-border-strong hover:border-accent/40 text-sm font-semibold text-content-secondary rounded-md transition-all disabled:opacity-60">
-                <Zap size={15} className="text-accent" /> {testingNx ? 'Testing…' : 'Test Keys'}
+                className="flex items-center gap-2 px-5 py-3 border-2 border-border-strong hover:border-accent/40 text-sm font-semibold text-content-secondary rounded-md transition-all disabled:opacity-60 cursor-pointer disabled:cursor-not-allowed">
+                <Zap size={15} className="text-accent" /> {testingNx ? 'Testing…' : 'Test Key'}
               </button>
             </div>
           </div>

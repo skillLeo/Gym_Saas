@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, ArrowRight, Check, Minus } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
+import { useI18nStore } from '@/store/i18nStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Field';
 import { Alert } from '@/components/ui/States';
@@ -17,6 +18,7 @@ function RegisterForm() {
   const searchParams = useSearchParams();
   const betaBlocked = searchParams.get('beta_blocked') === '1';
   const { setAuth } = useAuthStore();
+  const { locale } = useI18nStore();
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -47,9 +49,14 @@ function RegisterForm() {
         email: form.email.trim().toLowerCase(),
         password: form.password,
         password_confirmation: form.password_confirmation,
+        // Whatever language they were reading the site in when they signed up
+        // — a genuinely new customer who registers off the French marketing
+        // pages should land in a French account, not silently reset to
+        // English. See account.locale for why this now lives on the account.
+        locale,
       });
       const { token, user } = res.data.data;
-      setAuth(user, token);
+      setAuth(user, token, true);
       document.cookie = `auth_token=${token}; path=/; max-age=2592000`;
       toast.success('Account created. Your 30-day trial has started.');
       router.replace(user.email_verified ? '/auth/onboarding' : '/auth/verify-email');

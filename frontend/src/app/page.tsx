@@ -229,20 +229,31 @@ export default function LandingPage() {
 
       {/* ── HERO ── */}
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-black">
-        {/* Background: use /images/hero-team.jpg when available, fallback to Unsplash */}
+        {/*
+          The photo alone, cropped out of the client's finished graphic.
+
+          hero-team.jpg is that whole graphic — headline, "GO TEAM EXTREME" and
+          the black frame are all baked into the pixels. Using it here meant the
+          page drew its own <h1> on top of a picture of a headline, and letter-
+          boxed the photo inside bars that are part of the image. The text below
+          now reproduces his layout in live HTML, so it scales, translates and
+          stays sharp, while the photo goes edge to edge as he asked.
+        */}
         <div className="absolute inset-0">
           <img
-            src="/images/hero-team.jpg"
-            alt="Team Extreme — Go Team Extreme"
+            src="/images/hero-team-photo.jpg"
+            alt=""
+            aria-hidden="true"
             className="w-full h-full object-cover object-center"
             onError={(e) => {
               (e.target as HTMLImageElement).src =
                 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=1920&h=1080&fit=crop';
             }}
           />
-          {/* Dark overlay for text readability */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/50 to-black/90" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-transparent to-black/30" />
+          {/* Scrim: dark where the type sits, lightest across the middle so the
+              photo actually reads. The previous overlays stacked to roughly 90%
+              black and buried it. */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/85 via-black/40 to-black/85" />
         </div>
 
         {/* Animated particles */}
@@ -276,20 +287,71 @@ export default function LandingPage() {
             </div>
           )}
 
-          {/* Main headline */}
-          <h1 className="font-display text-5xl sm:text-6xl md:text-7xl lg:text-[88px] text-white leading-[0.88] mb-6 max-w-5xl mx-auto">
-            {t('landing.hero.transform')}
+          {/*
+            Set as two lines to match the client's own artwork: one word picked
+            out in orange on the top line, "GO TEAM EXTREME" beneath it. The X
+            is a separate span because a differently coloured X in "EXtreme" is
+            his signature — it runs through the logo, the cartoons and every
+            flyer, and the site was the only thing not carrying it.
+
+            Split across separate keys rather than colouring part of one
+            translated string: slicing a sentence by word position breaks the
+            moment a translator reorders it. "EXtreme" itself is the brand name
+            and stays as-is in every language.
+          */}
+          {/*
+            Font set inline, NOT via the `font-display` class, because that class
+            is currently broken site-wide. globals.css has an unlayered
+            `.font-display { font-family: var(--font-display) }`, and unlayered
+            CSS beats Tailwind's layered utility of the same name. But
+            --font-display is declared inside `@theme inline`, so it never exists
+            as a runtime custom property — the var() resolves to nothing, the
+            declaration is dropped, and the heading falls back to the browser's
+            default sans. That is why this headline rendered thin instead of the
+            heavy face in the client's artwork.
+
+            --font-display-fallback, by contrast, IS a real runtime variable: it
+            comes from next/font's className on <body>. 'Posey Textured' stays
+            first so the licensed brand face takes over the moment its file is
+            dropped into public/fonts/, exactly as the rest of the stack intends.
+          */}
+          {/*
+            Wrapping and sizing, both measured in the rendered face rather than
+            guessed.
+
+            Each phrase is `whitespace-nowrap`, so a line can only break BETWEEN
+            phrases — never "TRANSFORM YOUR / BODY" or "VOTRE / CORPS". The
+            mobile stack (TRANSFORM / YOUR BODY / GO TEAM / EXTREME) falls out of
+            that on its own, with no breakpoint logic. text-balance was tried
+            first and failed: a <br> does not start a new paragraph for
+            balancing, so Chrome balanced all four lines together and orphaned
+            "BODY" at 640px.
+
+            The cost of nowrap is that a phrase wider than the screen overflows
+            instead of wrapping, so the size is the smaller of two limits:
+              - (100vw - 2rem) / 8.614 — the widest phrase in any locale is
+                Spanish "VAMOS EQUIPO" at 8.363 x the font size, plus a 3%
+                margin; this keeps it inside the 2rem-padded column down to 320px.
+              - clamp(3rem, 6.6vw, 4.5rem) — caps desktop so English
+                "TRANSFORM YOUR BODY" (13.54 x the font size) holds one line in
+                the 1024px column, as it does in the client's artwork. The old
+                fixed lg:text-[88px] needed 1192px there.
+            Both ratios are for Archivo Black. Re-measure and update 8.614 if a
+            locale gains a longer phrase, or when the licensed Posey Textured
+            face replaces the fallback — its letters will not be the same width.
+          */}
+          <h1
+            className="uppercase font-normal text-white leading-[0.85] tracking-tight mb-6 max-w-5xl mx-auto drop-shadow-[0_4px_24px_rgba(0,0,0,0.85)]"
+            style={{
+              fontFamily: "'Posey Textured', var(--font-display-fallback), sans-serif",
+              fontSize: 'min(calc((100vw - 2rem) / 8.614), clamp(3rem, 6.6vw, 4.5rem))',
+            }}
+          >
+            <span className="whitespace-nowrap text-brand-orange">{t('landing.hero.transformWord')}</span>{' '}
+            <span className="whitespace-nowrap">{t('landing.hero.yourBodyWord')}</span>
             <br />
-            <span style={{
-              background: 'linear-gradient(135deg, #F87404 0%, #FF5C04 40%, #FF0404 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text'
-            }}>
-              {t('landing.social.heading')}
-            </span>
-            <br />
-            <span className="text-white/90">{t('landing.hero.own')}</span>
+            <span className="whitespace-nowrap">{t('landing.hero.goTeamWord')}</span>{' '}
+            <span className="whitespace-nowrap">E<span className="text-brand-orange">X</span>treme</span>
           </h1>
 
           {/* Sub headline */}

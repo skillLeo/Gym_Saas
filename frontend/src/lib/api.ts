@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { clearSession } from './auth';
+import { clearSession, getToken } from './auth';
 
 /**
  * Origin the API answers on, without a trailing slash.
@@ -21,7 +21,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  const token = getToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
