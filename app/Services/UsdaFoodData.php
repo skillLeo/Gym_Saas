@@ -85,6 +85,26 @@ class UsdaFoodData
      */
     private const CANDIDATES = 50;
 
+    /*
+     * How long one request may take, first try and retry.
+     *
+     * A lookup that cannot succeed has to give up quickly, because the member
+     * is watching and the review row now offers them a retry and a manual
+     * search instead. Under a healthy API neither of these comes near: a
+     * search answers in well under a second.
+     *
+     * The two differ on purpose. The retry exists for this API's spurious
+     * nginx 400s, which fail instantly — so a long budget on the second try
+     * only lengthens the hopeless case. The first keeps enough room to ride
+     * out a slow-but-working service; the second is short because a request
+     * that has already timed out once is not usually rescued by waiting
+     * longer.
+     *
+     *     6s + 0.25s pause + 2s  =  a failing lookup surfaces in about 8s
+     */
+    private const TIMEOUT_FIRST = 6;
+    private const TIMEOUT_RETRY = 2;
+
     /** FoodData Central nutrient numbers. */
     private const N_CALORIES = 1008;
     private const N_PROTEIN  = 1003;
@@ -171,7 +191,14 @@ class UsdaFoodData
          */
         $second = filled($alternate) ? (string) $alternate : $this->usEquivalent($query);
 
-        if (filled($second) && mb_strtolower((string) $second) !== mb_strtolower($query)) {
+        /*
+         * Once the service has said it is unavailable, no further passes are
+         * fired — matching what searchMany() already did. Carrying on meant a
+         * lookup that had already timed out twice spent another full timeout
+         * on the branded pass before giving up, which is where most of the 24
+         * seconds a failing lookup used to take actually went.
+         */
+        if (filled($second) && ! $this->unavailable && mb_strtolower((string) $second) !== mb_strtolower($query)) {
             $alt = $this->fetch((string) $second, self::GENERIC_TYPES);
 
             if ($alt !== []) {
@@ -182,7 +209,7 @@ class UsdaFoodData
 
         $ranked = $this->rank($found, $variants);
 
-        if (! $this->goodEnough($ranked, $variants)) {
+        if (! $this->unavailable && ! $this->goodEnough($ranked, $variants)) {
             $found  = array_merge($found, $this->fetch($query, self::BRANDED_TYPES));
             $ranked = $this->rank($found, $variants);
         }
@@ -377,7 +404,7 @@ class UsdaFoodData
              */
             $responses = Http::pool(fn (Pool $pool) => array_map(
                 fn (string $key) => $pool->as($key)
-                    ->timeout(12)
+                    ->timeout(self::TIMEOUT_FIRST)
                     ->get(
                         self::BASE.'/foods/search',
                         $this->searchParams($searchAs[$key] ?? $key, $dataType) + ['api_key' => $this->apiKey()],
@@ -415,7 +442,7 @@ class UsdaFoodData
 
             $second = Http::pool(fn (Pool $pool) => array_map(
                 fn (string $key) => $pool->as($key)
-                    ->timeout(12)
+                    ->timeout(self::TIMEOUT_RETRY)
                     ->get(
                         self::BASE.'/foods/search',
                         $this->searchParams($searchAs[$key] ?? $key, $dataType) + ['api_key' => $this->apiKey()],
@@ -982,7 +1009,7 @@ class UsdaFoodData
          */
         for ($attempt = 1; $attempt <= 2; $attempt++) {
             $isLast = $attempt === 2;
-            $out    = $this->attempt($path, $query, $isLast);
+            $out    = $this->attempt($path, $query, $isLast, $isLast ? self::TIMEOUT_RETRY : self::TIMEOUT_FIRST);
 
             if ($out !== null || $this->unavailable) {
                 return $out;
@@ -1002,13 +1029,10 @@ class UsdaFoodData
      *                        that times out is common enough here to be worth
      *                        another go rather than a warning.
      */
-    private function attempt(string $path, array $query, bool $isLast): ?array
+    private function attempt(string $path, array $query, bool $isLast, int $timeout): ?array
     {
         try {
-            // 8s, not 12s: two attempts have to fit inside the same budget the
-            // caller had for one. The API answers in well under a second when
-            // it answers at all.
-            $res = Http::timeout(8)
+            $res = Http::timeout($timeout)
                 ->get(self::BASE.$path, $query + ['api_key' => $this->apiKey()]);
 
             if ($res->status() === 429) {

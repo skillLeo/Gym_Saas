@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/States';
 import { NumericField, Input } from '@/components/ui/Field';
 import { Select } from '@/components/ui/Controls';
-import { Trash2, Plus, Search, Loader2, Info } from 'lucide-react';
+import { Trash2, Plus, Search, Loader2, Info, RotateCcw } from 'lucide-react';
 import api from '@/lib/api';
 import { useI18nStore } from '@/store/i18nStore';
 import { rowNutrition, type Draft, type ReviewRow, type UsdaMatch } from '@/lib/aiFoodLog';
@@ -104,6 +104,7 @@ export function AiReviewList({
           row={row}
           onChange={(patch) => update(row.id, patch)}
           onRemove={() => remove(row.id)}
+          lookupFailed={draft.food_database_unavailable}
         />
       ))}
 
@@ -163,11 +164,64 @@ export function AiReviewList({
 /* ------------------------------------------------------------------ row */
 
 function Row({
-  row, onChange, onRemove,
-}: { row: ReviewRow; onChange: (patch: Partial<ReviewRow>) => void; onRemove: () => void }) {
+  row, onChange, onRemove, lookupFailed,
+}: {
+  row: ReviewRow;
+  onChange: (patch: Partial<ReviewRow>) => void;
+  onRemove: () => void;
+  /** The food database could not be reached, so this row has no matches
+   *  because the lookup never happened — not because the food is unknown. */
+  lookupFailed: boolean;
+}) {
   const { t } = useI18nStore();
+  const [searching, setSearching] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const nutrition = rowNutrition(row);
   const chosen = row.manual ?? row.matches[row.chosen];
+  const empty = row.matches.length === 0 && !row.manual;
+
+  /**
+   * Look this one label up again, without re-running the whole analysis.
+   *
+   * A failed lookup used to leave the member stuck on that row with nothing
+   * to do but start over — which costs another AI call and another minute,
+   * for a food the model already identified correctly. This re-runs only the
+   * database search, which is free and usually works on the second ask while
+   * the API is having a bad spell.
+   */
+  const retry = async () => {
+    setRetrying(true);
+    try {
+      const res = await api.get(`/food/search?q=${encodeURIComponent(row.label)}`);
+
+      /*
+       * Only the USDA half of the results, which this endpoint returns after
+       * the member's own foods — `custom_count` says how many to skip.
+       *
+       * That matters because this pre-selects a food on the member's behalf.
+       * Retrying "banana" offered "Protein Banana Pancakes (My Recipes)" at
+       * 448 kcal, because a custom food matching the word sorts above every
+       * USDA entry here. Pre-selecting a ranked USDA match is the same
+       * promise the draft made; pre-selecting someone's pancake recipe is
+       * not. Their own foods stay one tap away under "Search for this food",
+       * where they choose rather than having it chosen.
+       */
+      const all: UsdaMatch[] = res.data?.data ?? [];
+      const found = all.slice(res.data?.custom_count ?? 0, (res.data?.custom_count ?? 0) + 3);
+
+      if (found.length > 0 && !res.data?.unavailable) {
+        onChange({ matches: found, chosen: 0, manual: undefined });
+      } else {
+        // Still nothing, or still unreachable. Offering the search box is
+        // more use than repeating the same message at them.
+        setSearching(true);
+      }
+    } catch {
+      setSearching(true);
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   return (
     <div className="rounded-md border border-border-subtle bg-surface-raised p-3 space-y-2.5">
@@ -196,8 +250,57 @@ function Row({
         </button>
       </div>
 
-      {row.matches.length === 0 && !row.manual ? (
-        <Alert tone="warning">{t('aiFood.review.noMatch')}</Alert>
+      {empty ? (
+        /*
+         * No food on this row, for one of two different reasons, and the way
+         * out differs. If the database was unreachable the lookup simply did
+         * not happen, so asking again is worth a tap; if it answered and had
+         * nothing, only searching will help. Either way the member must not
+         * be stranded on one row with no route forward but starting over.
+         */
+        <div className="space-y-2">
+          <Alert tone="warning">
+            {lookupFailed ? t('aiFood.review.lookupFailed') : t('aiFood.review.noMatch')}
+          </Alert>
+
+          {!searching && (
+            <div className="flex gap-2">
+              {lookupFailed && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1"
+                  loading={retrying}
+                  icon={<RotateCcw size={14} />}
+                  onClick={retry}
+                >
+                  {t('aiFood.error.tryAgain')}
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                className="flex-1"
+                disabled={retrying}
+                icon={<Search size={14} />}
+                onClick={() => setSearching(true)}
+              >
+                {t('aiFood.review.searchForThis')}
+              </Button>
+            </div>
+          )}
+
+          {searching && (
+            <FoodSearch
+              /* matches + chosen, not `manual`: the row renders its food
+                 through the "Which food" dropdown, and setting only `manual`
+                 would leave that dropdown with no options to show. Same shape
+                 the "Add another food" button produces. */
+              onPick={(food) => { onChange({ matches: [food], chosen: 0, manual: undefined }); setSearching(false); }}
+              onCancel={() => setSearching(false)}
+            />
+          )}
+        </div>
       ) : (
         <Select
           label={t('aiFood.review.whichFood')}

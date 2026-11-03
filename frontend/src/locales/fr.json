@@ -1714,6 +1714,8 @@
   "aiFood.review.weight": "Poids",
   "aiFood.review.pickAFood": "Choisissez un aliment pour voir les calories",
   "aiFood.review.noMatch": "Rien dans la base de données ne correspond. Cherchez-le ci-dessous ou retirez-le.",
+  "aiFood.review.lookupFailed": "La base de données alimentaire était injoignable, cet aliment n'a donc pas été recherché. Réessayez ou cherchez-le vous-même.",
+  "aiFood.review.searchForThis": "Chercher cet aliment",
   "aiFood.review.sourceUsda": "Valeurs nutritionnelles de l'USDA FoodData Central",
   "aiFood.review.kindGeneric": "générique",
   "aiFood.review.kindBrand": "marque",
