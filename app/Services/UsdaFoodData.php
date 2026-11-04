@@ -1330,10 +1330,84 @@ class UsdaFoodData
             ?: ((int) ($a['food']['external_food_id'] ?? PHP_INT_MAX) <=> (int) ($b['food']['external_food_id'] ?? PHP_INT_MAX))
             ?: $a['i'] <=> $b['i']);
 
-        return array_map(
+        return $this->collapseDuplicates(array_map(
             fn ($s) => $s['food'] + ['match_score' => round($s['score'], 3)],
             $scored,
-        );
+        ));
+    }
+
+    /**
+     * One row per food, when two datasets hold the same one.
+     *
+     * Foundation and SR Legacy overlap: both carry "Bananas, overripe, raw"
+     * and "Bread, whole-wheat, commercially prepared" under different ids, and
+     * USDA appends "(Includes foods for USDA's Food Distribution Program)" to
+     * some names, which makes a third spelling of the same thing. The member
+     * saw the same food listed two or three times in the picker with no way to
+     * tell the entries apart.
+     *
+     * The survivor is the one with the most complete nutrition rather than the
+     * highest score. They are the same food by definition here, so the figures
+     * are what differ, and a row with sugar and fibre filled in is strictly
+     * more use than one without. Order is otherwise untouched, so the best
+     * match stays first.
+     *
+     * @param  list<array<string,mixed>>  $ranked
+     * @return list<array<string,mixed>>
+     */
+    private function collapseDuplicates(array $ranked): array
+    {
+        $bestFor = [];
+
+        foreach ($ranked as $i => $food) {
+            $key = $this->duplicateKey((string) $food['name']);
+
+            if (! isset($bestFor[$key])) {
+                $bestFor[$key] = ['at' => $i, 'food' => $food, 'filled' => $this->nutrientsPresent($food)];
+
+                continue;
+            }
+
+            if ($this->nutrientsPresent($food) > $bestFor[$key]['filled']) {
+                // Keep the earlier position — that is the better match — but
+                // take the fuller row's figures.
+                $bestFor[$key]['food']   = $food;
+                $bestFor[$key]['filled'] = $this->nutrientsPresent($food);
+            }
+        }
+
+        usort($bestFor, fn ($a, $b) => $a['at'] <=> $b['at']);
+
+        return array_map(static fn ($e) => $e['food'], array_values($bestFor));
+    }
+
+    /**
+     * What makes two rows "the same food".
+     *
+     * Punctuation and case go, and so does any trailing parenthesis: USDA's
+     * "(Includes foods for USDA's Food Distribution Program)" is a provenance
+     * note, not a different food.
+     */
+    private function duplicateKey(string $description): string
+    {
+        $name = preg_replace('/\s*\([^)]*\)\s*$/', '', trim($description)) ?? $description;
+        $name = preg_replace('/[^a-z0-9]+/', ' ', mb_strtolower($name)) ?? $name;
+
+        return trim((string) $name);
+    }
+
+    /** How many of the seven figures this row actually carries. */
+    private function nutrientsPresent(array $food): int
+    {
+        $present = 0;
+
+        foreach (['calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg'] as $key) {
+            if (($food[$key] ?? null) !== null && (float) $food[$key] !== 0.0) {
+                $present++;
+            }
+        }
+
+        return $present;
     }
 
     /**

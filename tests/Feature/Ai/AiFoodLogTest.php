@@ -351,8 +351,20 @@ class AiFoodLogTest extends TestCase
 
     public function test_at_most_three_matches_are_offered(): void
     {
+        /*
+         * Eight DIFFERENT apples. They used to share one description, which
+         * now collapses to a single row — the same food from two datasets is
+         * deliberately shown once. This test is about the cap on how many
+         * choices a member is offered, so the candidates have to be genuinely
+         * distinct foods or it measures de-duplication instead.
+         */
         $this->fakeAll($this->oneApple(), usdaFoods: array_map(
-            fn (int $i) => $this->usdaApple(1000 + $i, 50 + $i),
+            function (int $i) {
+                $food = $this->usdaApple(1000 + $i, 50 + $i);
+                $food['description'] = "Apples, variety {$i}, raw";
+
+                return $food;
+            },
             range(1, 8),
         ));
 

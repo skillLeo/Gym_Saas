@@ -459,6 +459,76 @@ class LocalUsdaSearchTest extends TestCase
         $this->assertSame('Lettuce, cos or romaine, raw', $out['lettuce'][0]['name']);
     }
 
+    // ------------------------------------------------------ duplicates
+
+    public function test_the_same_food_from_both_datasets_is_shown_once(): void
+    {
+        /*
+         * Foundation and SR Legacy overlap — 110 descriptions appear more than
+         * once in the imported tables. The member saw the same food listed two
+         * or three times in the picker with nothing to tell the entries apart.
+         */
+        $this->localFood(1, 'Broccoli, raw', 34);
+        $this->localFood(2, 'Broccoli, raw', 32);
+
+        $names = array_column($this->usda()->search('broccoli', 5), 'name');
+
+        $this->assertSame(['Broccoli, raw'], $names);
+    }
+
+    public function test_the_fuller_row_survives(): void
+    {
+        // They are the same food, so the figures are what differ, and a row
+        // with fibre and sugar filled in is strictly more use.
+        DB::table('usda_foods')->insert([
+            ['fdc_id' => 1, 'data_type' => 'sr_legacy_food', 'description' => 'Broccoli, raw',
+             'calories' => 34, 'protein_g' => 2.8, 'carbs_g' => 6.6, 'fat_g' => 0.4,
+             'fiber_g' => null, 'sugar_g' => null, 'sodium_mg' => null, 'created_at' => now(), 'updated_at' => now()],
+            ['fdc_id' => 2, 'data_type' => 'foundation_food', 'description' => 'Broccoli, raw',
+             'calories' => 32, 'protein_g' => 2.6, 'carbs_g' => 6.3, 'fat_g' => 0.3,
+             'fiber_g' => 2.4, 'sugar_g' => 1.5, 'sodium_mg' => 33, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $out = $this->usda()->search('broccoli', 5);
+
+        $this->assertCount(1, $out);
+        $this->assertSame('2', $out[0]['external_food_id']);
+        $this->assertEquals(2.4, $out[0]['fiber_g']);
+    }
+
+    public function test_usdas_provenance_note_does_not_make_a_second_food(): void
+    {
+        /*
+         * "(Includes foods for USDA's Food Distribution Program)" is appended
+         * to some names. It says where the record came from, not what the food
+         * is, so it must not split one food into two rows in the picker.
+         */
+        $this->localFood(1, 'Apples, raw, with skin', 52);
+        $this->localFood(2, "Apples, raw, with skin (Includes foods for USDA's Food Distribution Program)", 52);
+
+        $this->assertCount(1, $this->usda()->search('apple', 5));
+    }
+
+    public function test_genuinely_different_foods_are_not_collapsed(): void
+    {
+        $this->localFood(1, 'Broccoli, raw', 34);
+        $this->localFood(2, 'Broccoli, cooked, boiled, drained, without salt', 35);
+        $this->localFood(3, 'Broccoli raab, raw', 22);
+
+        $this->assertCount(3, $this->usda()->search('broccoli', 5));
+    }
+
+    public function test_the_best_match_still_comes_first_after_collapsing(): void
+    {
+        // Collapsing takes the fuller row's figures but keeps the better
+        // match's position, so de-duplicating cannot reorder the list.
+        $this->localFood(1, 'Broccoli, raw', 34);
+        $this->localFood(2, 'Broccoli, raw', 32);
+        $this->localFood(3, 'Soup, broccoli cheese', 180);
+
+        $this->assertSame('Broccoli, raw', $this->usda()->search('broccoli', 5)[0]['name']);
+    }
+
     // ----------------------------------------------------------- ordering
 
     public function test_the_same_query_gives_the_same_answer_every_time(): void
