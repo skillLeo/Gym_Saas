@@ -324,7 +324,60 @@ class UsdaFoodData
             }
         }
 
+        /*
+         * The food this word actually means, when we have said so.
+         *
+         * Ranking by name gets most foods right and a few stubbornly wrong:
+         * "potato" found potato SKIN, "bacon" found TURKEY bacon, "salmon"
+         * found canned sockeye. Each is a real USDA food whose name answers
+         * the query perfectly, and no scoring rule separates them from the one
+         * a person means without knowing which that is. config/food_preferred.php
+         * says which. It is fetched even when the ordinary search missed it,
+         * and marked so score() can put it first.
+         */
+        $preferred = $this->preferredFor($variants);
+
+        if ($preferred !== null) {
+            $row = DB::table('usda_foods')
+                ->where('fdc_id', $preferred)
+                ->whereNotNull('calories')
+                ->first(['fdc_id', 'description', 'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg']);
+
+            if ($row !== null) {
+                $byId[(int) $row->fdc_id] = $this->mapLocal($row) + ['preferred' => true];
+            }
+        }
+
         return array_values($byId);
+    }
+
+    /**
+     * The configured fdc_id for one of these spellings, if there is one.
+     *
+     * Matched on the whole query, not word by word, so it fires on "chicken
+     * breast" but not on "grilled chicken breast with rice" — a longer phrase
+     * carries detail the list cannot know about and belongs to the ranking.
+     *
+     * @param  list<string>  $variants
+     */
+    private function preferredFor(array $variants): ?int
+    {
+        /** @var array<string,int> $preferred */
+        $preferred = config('food_preferred', []);
+
+        if ($preferred === []) {
+            return null;
+        }
+
+        foreach ($variants as $variant) {
+            $key = preg_replace('/\s+/', ' ', trim(mb_strtolower($variant)));
+
+            if (isset($preferred[$key])) {
+                return (int) $preferred[$key];
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1052,7 +1105,15 @@ class UsdaFoodData
                 + (in_array($head, $q, true) ? 1.5 : 0.0));
         }
 
-        return $best + (($food['kind'] ?? 'brand') === 'generic' ? 1.2 : 0.0);
+        /*
+         * A food named in config/food_preferred.php wins outright. The bonus
+         * is larger than any combination of the rules above can reach, which
+         * is the point: the list exists for the cases where name-matching is
+         * not the right instrument, so it must not be argued with by it.
+         */
+        return $best
+            + (($food['kind'] ?? 'brand') === 'generic' ? 1.2 : 0.0)
+            + (($food['preferred'] ?? false) ? 100.0 : 0.0);
     }
 
     /**

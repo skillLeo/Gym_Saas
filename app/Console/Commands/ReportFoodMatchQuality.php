@@ -80,7 +80,13 @@ class ReportFoodMatchQuality extends Command
         // Protein
         'chicken breast'    => [100, 180, 'raw 120 / roasted 165'],
         'salmon'            => [140, 230, 'raw 208'],
-        'tuna'              => [95,  150, 'canned in water 116'],
+        /*
+         * From 85, not 95. The band was set from "canned in water, without
+         * salt" at 116 and ignored the entry people actually log — "light,
+         * canned in water, DRAINED", which USDA puts at 86 to 90 because
+         * draining removes the water it was packed in. The floor was wrong.
+         */
+        'tuna'              => [85,  150, 'canned in water, drained 86-90'],
         'ground beef'       => [180, 290, '80/20 raw 254'],
         'bacon'             => [380, 560, 'cooked 541'],
         'egg'               => [130, 165, 'whole raw 143'],

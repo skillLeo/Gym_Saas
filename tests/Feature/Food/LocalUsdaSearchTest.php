@@ -234,6 +234,104 @@ class LocalUsdaSearchTest extends TestCase
         $this->assertContains('Bread, oatmeal', $names);
     }
 
+    // ------------------------------------------------- preferred foods
+
+    public function test_a_preferred_food_wins_even_when_another_scores_higher(): void
+    {
+        /*
+         * The whole reason the list exists. "Potatoes, raw, skin" answers
+         * "potato" better by every name-matching rule here — it leads with the
+         * word and carries one qualifier — but it is potato skin, and a member
+         * logging a potato means the potato.
+         */
+        config(['food_preferred' => ['potato' => 170026]]);
+
+        $this->localFood(1, 'Potatoes, raw, skin', 58);
+        $this->localFood(170026, 'Potatoes, flesh and skin, raw', 77);
+
+        $out = $this->usda()->search('potato', 3);
+
+        $this->assertSame('Potatoes, flesh and skin, raw', $out[0]['name']);
+        $this->assertTrue($out[0]['preferred']);
+    }
+
+    public function test_a_preferred_food_is_found_even_if_the_search_would_have_missed_it(): void
+    {
+        // Named foods are fetched by id, not hoped for in the candidate list.
+        config(['food_preferred' => ['porridge' => 173905]]);
+
+        $this->localFood(173905, 'Cereals, oats, regular and quick, cooked with water', 71);
+
+        $out = $this->usda()->search('porridge', 3);
+
+        $this->assertSame(173905, (int) $out[0]['external_food_id']);
+    }
+
+    public function test_the_other_candidates_are_still_offered(): void
+    {
+        // It decides the default, not the options — the member can still pick
+        // something else from the dropdown.
+        config(['food_preferred' => ['potato' => 170026]]);
+
+        $this->localFood(1, 'Potatoes, raw, skin', 58);
+        $this->localFood(170026, 'Potatoes, flesh and skin, raw', 77);
+
+        $names = array_column($this->usda()->search('potato', 5), 'name');
+
+        $this->assertContains('Potatoes, raw, skin', $names);
+    }
+
+    public function test_it_matches_the_whole_query_not_a_word_inside_it(): void
+    {
+        /*
+         * A longer phrase carries detail the list cannot know about, so it
+         * belongs to the ranking. "Chicken breast" is named; "grilled chicken
+         * breast with rice and broccoli" is a meal, not an entry.
+         */
+        config(['food_preferred' => ['chicken breast' => 2]]);
+
+        $this->localFood(1, 'Chicken, breast, raw', 120);
+        $this->localFood(2, 'Chicken, breast, cooked, roasted', 165);
+
+        $this->assertSame(2, (int) $this->usda()->search('chicken breast', 3)[0]['external_food_id']);
+        $this->assertSame(2, (int) $this->usda()->search('  Chicken  Breast ', 3)[0]['external_food_id']);
+
+        $longer = $this->usda()->search('grilled chicken breast with rice', 3);
+        $this->assertFalse($longer[0]['preferred'] ?? false);
+    }
+
+    public function test_a_preferred_id_that_is_not_imported_is_ignored(): void
+    {
+        // An id for a food this install has not got must not blank the result.
+        config(['food_preferred' => ['banana' => 999999]]);
+
+        $this->localFood(173944, 'Bananas, raw', 89);
+
+        $this->assertSame('Bananas, raw', $this->usda()->search('banana', 3)[0]['name']);
+    }
+
+    public function test_the_shipped_list_is_well_formed(): void
+    {
+        /*
+         * Cannot check the ids resolve — the test database holds no imported
+         * foods — but it can check the file stays editable by hand without
+         * breaking the lookup, which matches on a normalised key.
+         */
+        $preferred = require base_path('config/food_preferred.php');
+
+        $this->assertGreaterThanOrEqual(100, count($preferred));
+
+        foreach ($preferred as $term => $id) {
+            $this->assertIsInt($id, "'{$term}' must be an fdc_id");
+            $this->assertGreaterThan(0, $id, "'{$term}' has a nonsense id");
+            $this->assertSame(
+                preg_replace('/\s+/', ' ', trim(mb_strtolower((string) $term))),
+                (string) $term,
+                "'{$term}' is not normalised, so it can never match a query",
+            );
+        }
+    }
+
     // ----------------------------------------------------------- ordering
 
     public function test_the_same_query_gives_the_same_answer_every_time(): void
