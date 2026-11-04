@@ -332,6 +332,133 @@ class LocalUsdaSearchTest extends TestCase
         }
     }
 
+    // ------------------------------------------------- raw versus cooked
+
+    private function chickenPair(): void
+    {
+        $this->localFood(1, 'Chicken, breast, boneless, skinless, raw', 112);
+        $this->localFood(2, 'Chicken, breast, meat only, cooked, roasted', 165);
+    }
+
+    public function test_cooked_is_preferred_when_the_caller_says_cooked(): void
+    {
+        /*
+         * The difference is 47 kcal per 100 g on a food the model identified
+         * perfectly — a 40% error from picking the wrong entry, which is more
+         * than most of what the ranking rules are arguing about.
+         */
+        $this->chickenPair();
+
+        $out = $this->usda()->search('chicken breast', 3, null, 'cooked');
+
+        $this->assertSame('Chicken, breast, meat only, cooked, roasted', $out[0]['name']);
+    }
+
+    public function test_raw_is_preferred_only_when_the_caller_says_raw(): void
+    {
+        $this->chickenPair();
+
+        $out = $this->usda()->search('chicken breast', 3, null, 'raw');
+
+        $this->assertSame('Chicken, breast, boneless, skinless, raw', $out[0]['name']);
+    }
+
+    public function test_grilled_and_boiled_count_as_cooked(): void
+    {
+        // A member who says "grilled" has told us it is not raw, which is the
+        // part that matters; USDA may file it as roasted or broiled.
+        $this->chickenPair();
+
+        foreach (['grilled', 'baked', 'boiled', 'fried'] as $how) {
+            Cache::flush();
+            $out = $this->usda()->search('chicken breast', 3, null, $how);
+
+            $this->assertSame(
+                'Chicken, breast, meat only, cooked, roasted',
+                $out[0]['name'],
+                "'{$how}' should not have chosen the raw entry",
+            );
+        }
+    }
+
+    public function test_unknown_leaves_the_ranking_alone(): void
+    {
+        $this->chickenPair();
+
+        Cache::flush();
+        $unknown = $this->usda()->search('chicken breast', 3, null, 'unknown');
+        Cache::flush();
+        $none = $this->usda()->search('chicken breast', 3);
+
+        $this->assertSame($none[0]['name'], $unknown[0]['name']);
+    }
+
+    public function test_manual_search_is_unchanged(): void
+    {
+        /*
+         * The search box has no model behind it and no way to know how
+         * anything was cooked, so it passes nothing and the rule is inert.
+         * This is the guarantee that the feature cannot change what someone
+         * typing into the food search sees.
+         */
+        $this->chickenPair();
+
+        $withoutPreparation = $this->usda()->search('chicken breast', 3);
+        Cache::flush();
+        $explicitNull = $this->usda()->search('chicken breast', 3, null, null);
+
+        $this->assertSame(
+            array_column($withoutPreparation, 'name'),
+            array_column($explicitNull, 'name'),
+        );
+    }
+
+    public function test_a_stated_preparation_overrides_the_preferred_food(): void
+    {
+        /*
+         * The preferred list gives the default for a bare word; a stated
+         * preparation is more specific and wins. "Chicken breast" defaults to
+         * the roasted entry, but if the model saw raw chicken that default is
+         * simply wrong.
+         */
+        config(['food_preferred' => ['chicken breast' => 2]]);
+        $this->chickenPair();
+
+        $out = $this->usda()->search('chicken breast', 3, null, 'raw');
+
+        $this->assertSame('Chicken, breast, boneless, skinless, raw', $out[0]['name']);
+        $this->assertFalse($out[0]['preferred'] ?? false);
+    }
+
+    public function test_the_preparation_is_part_of_the_cache_key(): void
+    {
+        // Raw and cooked are two questions with two right answers; sharing a
+        // cache entry would serve one as the other.
+        $this->chickenPair();
+
+        $cooked = $this->usda()->search('chicken breast', 3, null, 'cooked');
+        $raw    = $this->usda()->search('chicken breast', 3, null, 'raw');
+
+        $this->assertNotSame($cooked[0]['name'], $raw[0]['name']);
+    }
+
+    public function test_each_label_can_have_its_own_preparation(): void
+    {
+        // One plate can hold raw salad beside grilled meat.
+        $this->chickenPair();
+        $this->localFood(3, 'Lettuce, cos or romaine, raw', 17);
+
+        $out = $this->usda()->searchMany(
+            ['chicken breast', 'lettuce'],
+            3,
+            [],
+            ['chicken breast' => 'grilled', 'lettuce' => 'raw'],
+        );
+
+        $this->assertSame('Chicken, breast, meat only, cooked, roasted', $out['chicken breast'][0]['name']);
+        $this->assertSame('Lettuce, cos or romaine, raw', $out['lettuce'][0]['name']);
+    }
+
     // ----------------------------------------------------------- ordering
 
     public function test_the_same_query_gives_the_same_answer_every_time(): void

@@ -139,11 +139,30 @@ class UsdaFoodData
      *                                  passes the model's plain US name here
      *                                  ("porridge" -> "oatmeal").
      */
-    public function search(string $query, int $limit = 25, ?string $alternate = null): array
+    /**
+     * @param  string|null  $preparation  raw|cooked|boiled|fried|baked|grilled,
+     *                                    when the caller knows. The manual
+     *                                    search box does not and passes null,
+     *                                    which disables the rule entirely.
+     */
+    public function search(string $query, int $limit = 25, ?string $alternate = null, ?string $preparation = null): array
     {
         $this->unavailable = false;
+        $this->preparation = $this->normalisePreparation($preparation);
 
-        return $this->searchRaw($query, $limit, $alternate);
+        try {
+            return $this->searchRaw($query, $limit, $alternate);
+        } finally {
+            $this->preparation = null;
+        }
+    }
+
+    /** Anything we have no rule for, including "unknown", means no preference. */
+    private function normalisePreparation(?string $preparation): ?string
+    {
+        $key = mb_strtolower(trim((string) $preparation));
+
+        return isset(self::PREPARATION_WORDS[$key]) ? $key : null;
     }
 
     /**
@@ -273,6 +292,81 @@ class UsdaFoodData
         return $variants;
     }
 
+    /**
+     * The preparation the current lookup was told about, or null.
+     *
+     * Held on the instance rather than threaded through rank() and score()
+     * because it belongs to the whole lookup, not to any one candidate, and
+     * every caller that does not know it leaves it null — which is the manual
+     * search box, deliberately unchanged.
+     */
+    private ?string $preparation = null;
+
+    /**
+     * Per-label preparations for the current pooled lookup.
+     *
+     * searchMany() handles many labels at once and one plate can hold raw
+     * salad beside grilled meat, so the preparation has to be switched per
+     * query rather than held for the batch.
+     *
+     * @var array<string,string>
+     */
+    private array $preparationByQuery = [];
+
+    /** Point the preparation rules at one label of a pooled lookup. */
+    private function usePreparationFor(string $query): void
+    {
+        $this->preparation = $this->preparationByQuery[$query] ?? null;
+    }
+
+    /**
+     * How well a candidate's description matches the stated preparation.
+     *
+     * Rewards agreement and punishes contradiction, because both carry
+     * information: "Chicken, breast, raw" is a bad answer for grilled chicken
+     * in a way that "Chicken, breast" is merely a neutral one. The penalty is
+     * smaller than the headword bonus, so it tips a close decision rather than
+     * overriding which food this is.
+     */
+    private function preparationScore(string $description): float
+    {
+        if ($this->preparation === null || ! isset(self::PREPARATION_WORDS[$this->preparation])) {
+            return 0.0;
+        }
+
+        /*
+         * NOT tokens(): "raw" is a noise word there, stripped precisely so it
+         * neither earns nor costs anything when matching a food's identity.
+         * Here it is the whole point, so the description is split plainly.
+         */
+        $words = preg_split('/[^a-z]+/', mb_strtolower($description)) ?: [];
+
+        foreach (self::PREPARATION_WORDS[$this->preparation] as $wanted) {
+            if (in_array($wanted, $words, true)) {
+                return 1.2;
+            }
+        }
+
+        // Contradiction: raw asked for and the entry is cooked, or the reverse.
+        $opposite = $this->preparation === 'raw'
+            ? self::PREPARATION_WORDS['cooked']
+            : self::PREPARATION_WORDS['raw'];
+
+        foreach ($opposite as $clashing) {
+            if (in_array($clashing, $words, true)) {
+                return -1.2;
+            }
+        }
+
+        return 0.0;
+    }
+
+    /** Does this description agree with the stated preparation? */
+    private function matchesPreparation(string $description): bool
+    {
+        return $this->preparationScore($description) >= 0.0;
+    }
+
     /** Set once per instance; the answer cannot change mid-request. */
     private ?bool $localReady = null;
 
@@ -344,7 +438,20 @@ class UsdaFoodData
                 ->first(['fdc_id', 'description', 'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg']);
 
             if ($row !== null) {
-                $byId[(int) $row->fdc_id] = $this->mapLocal($row) + ['preferred' => true];
+                $food = $this->mapLocal($row);
+
+                /*
+                 * The named food is the default for a bare word, but a stated
+                 * preparation is more specific information and outranks it.
+                 * "Chicken breast" defaults to the roasted entry; if the model
+                 * says the chicken was raw, that default is wrong, so the food
+                 * stays as an ordinary candidate instead of being forced.
+                 */
+                if ($this->matchesPreparation((string) $row->description)) {
+                    $food['preferred'] = true;
+                }
+
+                $byId[(int) $row->fdc_id] = $food;
             }
         }
 
@@ -550,9 +657,24 @@ class UsdaFoodData
      * @param  array<string,string>  $alternates  label => plain US search name,
      *                                            as supplied by the model.
      */
-    public function searchMany(array $queries, int $limit = 3, array $alternates = []): array
+    /**
+     * @param  array<string,string>  $preparations  label => raw|cooked|…, when
+     *                                              the caller knows. Per label,
+     *                                              because one plate can hold
+     *                                              raw salad and grilled meat.
+     */
+    public function searchMany(array $queries, int $limit = 3, array $alternates = [], array $preparations = []): array
     {
         $this->unavailable = false;
+
+        $this->preparationByQuery = [];
+        foreach ($preparations as $label => $preparation) {
+            $normalised = $this->normalisePreparation($preparation);
+
+            if ($normalised !== null) {
+                $this->preparationByQuery[(string) $label] = $normalised;
+            }
+        }
 
         $queries = array_values(array_unique(array_filter($queries, 'filled')));
         $results = [];
@@ -560,6 +682,7 @@ class UsdaFoodData
         $variant = [];   // query => spellings searched under
 
         foreach ($queries as $query) {
+            $this->usePreparationFor($query);
             $hit = Cache::get($this->cacheKey($query, $limit, $alternates[$query] ?? null));
 
             if ($hit !== null) {
@@ -581,12 +704,14 @@ class UsdaFoodData
          * point: the food journal keeps working when FoodData Central does not.
          */
         foreach ($found as $query => $_) {
-            $query             = (string) $query;
-            $variant[$query]   = $this->variantsFor($query, $alternates[$query] ?? null);
-            $found[$query]     = $this->localSearch($variant[$query]);
+            $query           = (string) $query;
+            $this->usePreparationFor($query);
+            $variant[$query] = $this->variantsFor($query, $alternates[$query] ?? null);
+            $found[$query]   = $this->localSearch($variant[$query]);
         }
 
         foreach ($this->answered($found, $variant) as $query) {
+            $this->usePreparationFor($query);
             $results[$query] = $this->remember(
                 $this->cacheKey($query, $limit, $alternates[$query] ?? null),
                 $this->rank($found[$query], $variant[$query]),
@@ -598,6 +723,7 @@ class UsdaFoodData
         // Everything the local copy settled is done; only the rest goes out.
         if ($found === [] || ! $this->configured()) {
             foreach ($found as $query => $candidates) {
+                $this->usePreparationFor((string) $query);
                 $results[$query] = $this->remember(
                     $this->cacheKey($query, $limit, $alternates[$query] ?? null),
                     $this->rank($candidates, $variant[$query]),
@@ -650,6 +776,7 @@ class UsdaFoodData
         }
 
         foreach ($found as $query => $candidates) {
+            $this->usePreparationFor((string) $query);
             $results[$query] = $this->remember(
                 $this->cacheKey($query, $limit, $alternates[$query] ?? null),
                 $this->rank($candidates, $variant[$query]),
@@ -706,6 +833,8 @@ class UsdaFoodData
         $out = [];
 
         foreach ($found as $query => $candidates) {
+            $this->usePreparationFor((string) $query);
+
             if (! $this->goodEnough($this->rank($candidates, $variant[$query]), $variant[$query])) {
                 $out[] = (string) $query;
             }
@@ -846,9 +975,22 @@ class UsdaFoodData
      * ranking against a 24-hour cache would compare the new code against the
      * old code's stored answers and show no difference at all.
      */
-    public function forgetSearch(string $query, int $limit = 25, ?string $alternate = null): void
+    public function forgetSearch(string $query, int $limit = 25, ?string $alternate = null, ?string $preparation = null): void
     {
-        Cache::forget($this->cacheKey($query, $limit, $alternate));
+        /*
+         * The preparation has to be passed, because it is part of the key.
+         * Forgetting "chicken breast" with none set does not forget "chicken
+         * breast, cooked" — which cost an hour of chasing a stale answer that
+         * looked like a scoring bug.
+         */
+        $previous          = $this->preparation;
+        $this->preparation = $this->normalisePreparation($preparation);
+
+        try {
+            Cache::forget($this->cacheKey($query, $limit, $alternate));
+        } finally {
+            $this->preparation = $previous;
+        }
     }
 
     /**
@@ -860,7 +1002,14 @@ class UsdaFoodData
     {
         $norm = static fn (string $s) => preg_replace('/\s+/', ' ', trim(mb_strtolower($s)));
 
-        return 'usda_search_'.md5($norm($query).'|'.$limit.'|'.(filled($alternate) ? $norm((string) $alternate) : ''));
+        // The preparation is part of the question: "chicken breast" raw and
+        // "chicken breast" grilled are two different lookups with two
+        // different right answers, and must not share a cache entry.
+        return 'usda_search_'.md5(
+            $norm($query).'|'.$limit.'|'
+            .(filled($alternate) ? $norm((string) $alternate) : '').'|'
+            .($this->preparation ?? '')
+        );
     }
 
     /** @return array<string,string|int> */
@@ -894,6 +1043,37 @@ class UsdaFoodData
         'commodity' => 1, 'all' => 1, 'types' => 1, 'varieties' => 1,
         'and' => 1, 'or' => 1, 'the' => 1, 'of' => 1, 'in' => 1, 'a' => 1,
         'an' => 1, 'with' => 1, 'without' => 1, 'added' => 1, 'unprepared' => 1,
+    ];
+
+    /**
+     * What each preparation looks like in a USDA description.
+     *
+     * The difference is large and systematic — raw chicken breast is 120
+     * kcal/100 g against 165 roasted, dry pasta 371 against 157 cooked — so a
+     * food identified perfectly can still be 40% wrong if the wrong entry is
+     * picked. USDA writes the state into the description, which makes it
+     * something the ranking can act on.
+     *
+     * "Cooked" is broad on purpose: a member who says their chicken was
+     * cooked has not said how, and roasted, broiled or boiled all beat raw.
+     *
+     * @var array<string, list<string>>
+     */
+    private const PREPARATION_WORDS = [
+        /*
+         * "dry" is deliberately absent, though dry pasta really is the raw
+         * form. It appears in far more names than it ought to: rewarding it
+         * made "Egg custards, dry mix" the answer for raw egg and "Rice
+         * noodles, dry" the answer for raw rice. The foods where dry is the
+         * right reading — pasta, rice, oats — are better served by the
+         * preferred list, which names them outright.
+         */
+        'raw'     => ['raw', 'uncooked'],
+        'cooked'  => ['cooked', 'boiled', 'roasted', 'broiled', 'baked', 'grilled', 'prepared', 'toasted'],
+        'boiled'  => ['boiled', 'cooked'],
+        'fried'   => ['fried'],
+        'baked'   => ['baked', 'roasted', 'cooked'],
+        'grilled' => ['grilled', 'broiled', 'roasted', 'cooked'],
     ];
 
     /**
@@ -1113,7 +1293,8 @@ class UsdaFoodData
          */
         return $best
             + (($food['kind'] ?? 'brand') === 'generic' ? 1.2 : 0.0)
-            + (($food['preferred'] ?? false) ? 100.0 : 0.0);
+            + (($food['preferred'] ?? false) ? 100.0 : 0.0)
+            + $this->preparationScore((string) $food['name']);
     }
 
     /**

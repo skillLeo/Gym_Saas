@@ -111,7 +111,7 @@ class AiFoodLogTest extends TestCase
         return [
             'food_found' => true,
             'items'      => [[
-                'label' => 'apple', 'search_name' => 'apple', 'quantity' => 1, 'unit' => 'piece',
+                'label' => 'apple', 'search_name' => 'apple', 'preparation' => 'raw', 'quantity' => 1, 'unit' => 'piece',
                 'grams' => $grams, 'confidence' => 'high',
             ]],
         ];
@@ -319,7 +319,7 @@ class AiFoodLogTest extends TestCase
     {
         $this->fakeAll(
             ['food_found' => true, 'items' => [[
-                'label' => 'grandmas secret stew', 'search_name' => 'stew', 'quantity' => 1, 'unit' => 'cup',
+                'label' => 'grandmas secret stew', 'search_name' => 'stew', 'preparation' => 'cooked', 'quantity' => 1, 'unit' => 'cup',
                 'grams' => 300, 'confidence' => 'low',
             ]]],
             usdaFoods: [],   // nothing in the database matches
@@ -370,7 +370,7 @@ class AiFoodLogTest extends TestCase
         $this->fakeAll([
             'food_found' => true,
             'items'      => [[
-                'label' => 'apple', 'search_name' => 'apple', 'quantity' => 1, 'unit' => 'piece',
+                'label' => 'apple', 'search_name' => 'apple', 'preparation' => 'raw', 'quantity' => 1, 'unit' => 'piece',
                 'grams' => 182, 'confidence' => 'high',
             ]],
             'calories'      => 0,
@@ -439,7 +439,7 @@ class AiFoodLogTest extends TestCase
         // it returns can become a calorie figure, because it is never asked
         // for one and there is nowhere to put it.
         $this->assertSame(
-            ['label', 'search_name', 'quantity', 'unit', 'grams', 'confidence'],
+            ['label', 'search_name', 'preparation', 'quantity', 'unit', 'grams', 'confidence'],
             array_keys($itemProps),
         );
 

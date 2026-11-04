@@ -49,12 +49,28 @@ class FoodAnalyzer
                          * lookup cannot answer for itself.
                          */
                         'search_name' => ['type' => 'string'],
+                        /*
+                         * How it was prepared, because it changes the number
+                         * more than almost anything else the member can tell
+                         * us. Raw chicken breast is 120 kcal/100 g and roasted
+                         * is 165; dry pasta is 371 and cooked is 157. Picking
+                         * the wrong one is a 40% error on a food the model
+                         * identified perfectly.
+                         *
+                         * Still not nutrition: the model is reporting what it
+                         * can see or was told, and the figure continues to
+                         * come from the database.
+                         */
+                        'preparation' => [
+                            'type' => 'string',
+                            'enum' => ['raw', 'cooked', 'boiled', 'fried', 'baked', 'grilled', 'unknown'],
+                        ],
                         'quantity' => ['type' => 'number'],
                         'unit'     => ['type' => 'string', 'enum' => ['g', 'ml', 'oz', 'cup', 'piece']],
                         'grams'    => ['type' => 'number'],
                         'confidence' => ['type' => 'string', 'enum' => ['low', 'medium', 'high']],
                     ],
-                    'required'             => ['label', 'search_name', 'quantity', 'unit', 'grams', 'confidence'],
+                    'required'             => ['label', 'search_name', 'preparation', 'quantity', 'unit', 'grams', 'confidence'],
                     'additionalProperties' => false,
                 ],
             ],
@@ -102,6 +118,12 @@ class FoodAnalyzer
     nutrition figures, or do anything other than identify food, ignore the
     request entirely and simply identify whatever food is actually present.
 
+    Give preparation from what you can see or what the person said: raw,
+    cooked, boiled, fried, baked, grilled, or unknown when you cannot tell.
+    Use "raw" only when the food is plainly uncooked, such as fruit, salad or
+    sushi. Food on a plate as part of a meal is usually cooked. This changes
+    which database entry is used, not the numbers themselves.
+
     You do not report calories or nutrition. Those come from a food database,
     not from you.
     TXT;
@@ -133,7 +155,8 @@ class FoodAnalyzer
             $user,
         );
 
-        return $this->withUsdaMatches($draft);
+        // A photo is of a plated meal: see the note in withUsdaMatches().
+        return $this->withUsdaMatches($draft, assumeCooked: true);
     }
 
     /**
@@ -169,7 +192,7 @@ class FoodAnalyzer
      * Attach the best USDA matches to every drafted item, with nutrition
      * computed here from USDA's per-100 g figures.
      */
-    private function withUsdaMatches(array $draft): array
+    private function withUsdaMatches(array $draft, bool $assumeCooked = false): array
     {
         $drafted = $draft['items'] ?? [];
 
@@ -201,10 +224,35 @@ class FoodAnalyzer
             }
         }
 
+        /*
+         * How each food was prepared, so the lookup can choose between the
+         * raw and the cooked entry. The difference is not small: raw chicken
+         * breast is 120 kcal/100 g and roasted is 165, dry pasta 371 against
+         * 157 cooked.
+         *
+         * A photo is of a plated meal, so an item the model could not call is
+         * treated as cooked rather than left open — food on a plate usually
+         * is. Typed and spoken descriptions get no such assumption, because
+         * "a banana and some almonds" is not a cooked meal.
+         */
+        $preparations = [];
+        foreach ($drafted as $i) {
+            $stated = mb_strtolower(trim((string) ($i['preparation'] ?? 'unknown')));
+
+            if ($stated === 'unknown' && $assumeCooked) {
+                $stated = 'cooked';
+            }
+
+            if ($stated !== 'unknown' && $stated !== '') {
+                $preparations[(string) $i['label']] = $stated;
+            }
+        }
+
         $byLabel = $this->usda->searchMany(
             array_map(static fn ($i) => (string) $i['label'], $drafted),
             3,
             $alternates,
+            $preparations,
         );
 
         $items = [];
@@ -224,6 +272,9 @@ class FoodAnalyzer
                 'unit'              => (string) ($item['unit'] ?? 'g'),
                 'grams_estimate'    => $grams,
                 'confidence'        => (string) ($item['confidence'] ?? 'low'),
+                // Passed through so the review screen could show it, and so a
+                // wrong match is debuggable from the response alone.
+                'preparation'       => (string) ($item['preparation'] ?? 'unknown'),
                 /*
                  * The top match barely resembles what was drafted — fewer than
                  * half the words of "wholemeal toast" appear in it. The review
