@@ -75,11 +75,20 @@ curl -s -o /dev/null -w "app %{http_code}\n" http://localhost:3000/auth/login   
 
 ### The accounts (all verified against the current database)
 
-| Role | Email | Password |
-|---|---|---|
-| Admin | `kelvin@myextremetrainer.com` | `password123` |
-| **Member — use this one** | `member@myextremetrainer.com` | `password123` |
-| Spare member | `test@myextremetrainer.com` | `password123` |
+| Role | Email |
+|---|---|
+| Admin | `kelvin@myextremetrainer.com` |
+| **Member — use this one** | `member@myextremetrainer.com` |
+| Spare member | `test@myextremetrainer.com` |
+
+All three use the seeded development password, which is set in
+`database/seeders/AdminUserSeeder.php` — look there rather than here.
+
+> It is not written in this file on purpose. This repository is public, and a
+> table of working logins is a great deal more useful to someone scanning it
+> than the same string buried in a seeder. The password is in that seeder
+> either way, so the right fix is to change it on any host that is reachable
+> from the internet, not to hide it better.
 
 The login page in dev shows two grey **Admin** / **Member** buttons under the
 form that log you straight in. They only render when `NODE_ENV=development`
