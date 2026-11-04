@@ -657,6 +657,17 @@ export default function FoodJournalPage() {
                           <p className="text-sm text-content-tertiary text-center py-3">{t('foodJournal.searchToAdd')}</p>
                         )}
 
+                        {/* Where the numbers come from, said once under the
+                            results that carry them. The data is USDA's and in
+                            the public domain (CC0), so this is credit rather
+                            than a licence condition — but a member reading a
+                            calorie figure is entitled to know whose it is. */}
+                        {searchQuery.trim() && searchResults.length > 0 && (
+                          <p className="text-xs text-content-tertiary text-center pt-2">
+                            {t('foodJournal.nutritionSource')}
+                          </p>
+                        )}
+
                         <button onClick={() => { setShowAddFood(null); setSearchQuery(''); }} className="mt-3 text-xs text-content-tertiary hover:text-content-secondary dark:hover:text-content-tertiary w-full text-center py-1">{t('goals.modal.cancel')}</button>
                       </div>
                     ) : (

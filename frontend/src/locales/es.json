@@ -408,6 +408,7 @@
   "foodJournal.searchPlaceholder": "Buscar alimentos...",
   "foodJournal.searchResults": "Resultados de búsqueda",
   "foodJournal.searchToAdd": "Busca un alimento para añadir",
+  "foodJournal.nutritionSource": "Datos nutricionales de USDA FoodData Central (dominio público)",
   "foodJournal.servingsLabel": "Porciones (1 porción = {qty} {unit})",
   "foodJournal.slotNamePlaceholder": "ej. Snack Nocturno",
   "foodJournal.stayHydrated": "Mantente hidratado durante el día",

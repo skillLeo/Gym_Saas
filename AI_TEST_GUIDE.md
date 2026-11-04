@@ -211,8 +211,8 @@ honey and a banana is about **340 kcal**. **Three times too high.**
 ### What changed, and what is still not right
 
 Across 37 common foods the top match went from **19/37 inside a sensible
-calorie band to 30/37**. Re-run it yourself — it is one command, and it talks
-to the real API:
+calorie band to 35/37**, and the whole report now runs in under a second
+because it reads the local tables rather than the API. Re-run it yourself:
 
 ```bash
 php artisan foods:match-report --fresh
@@ -228,12 +228,20 @@ Confirmed by hand after the change:
 | potato | `Bread, potato` 266 | ✅ a potato (58–77 depending on entry) |
 | carrot | `Carrot, dehydrated` 341 | ✅ `Carrots, raw` **41** |
 | greek yogurt | `GREEK YOGURT` 467 | ✅ `Yogurt, Greek…` **82** |
-| **porridge** | `…PORRIDGE SLICED BREAD` 260 | ⚠️ **still wrong** — last seen `Oat bran, cooked` 40 |
-| **wholemeal toast** | `Bread, egg, toasted` 315 | ⚠️ **still wrong** — last seen `Crackers, whole-wheat` 427 |
+| **porridge** | `…PORRIDGE SLICED BREAD` 260 | ⚠️ `Cereals, WHEATENA, cooked with water` **56** |
+| **wholemeal toast** | `Bread, egg, toasted` 315 | ⚠️ `Bread, wheat, toasted` **313** |
 
-**Porridge and wholemeal toast are not fixed.** They are closer, and the AI
-path has an extra advantage the bare term does not — the model supplies a US
-search name — but I would not claim either is right. Check them specifically.
+**Porridge and wholemeal toast are only half fixed.** Both now land on the
+right *kind* of food with a believable calorie figure — a cooked cereal and a
+toasted bread — but neither is the exact food named: the cereal is wheat
+rather than oats, and the bread is not wholemeal. Check them specifically, and
+use the dropdown.
+
+Two remaining failures in the 37-food set, both the same shape — the right
+head word with a qualifier that changes the food:
+
+- **potato** → `Potatoes, raw, skin` 58 (potato skin, not the potato)
+- **bacon** → `Bacon, turkey, unprepared` 226 (turkey bacon, not pork)
 
 So the thing to actually test is the **"Which food"** dropdown on each row:
 open it, confirm there are three options, and confirm picking a different one
@@ -260,6 +268,26 @@ plain one.
 When the top match barely resembles what was drafted, the row says
 *"Not sure about this one — check it"* under the label. That is the signal to
 open the list rather than trust the first option.
+
+### Everyday foods now come from a local copy
+
+Ordinary foods — banana, chicken breast, broccoli — are served from USDA's
+curated datasets **imported into our own database**, so they work with the
+live API completely switched off. Proven by disabling the key: all ten of
+`banana, apple, chicken breast, salmon, broccoli, carrot, egg, tomato,
+porridge, wholemeal toast` resolved, in **239 ms for all ten**.
+
+The API is still used for branded supermarket products and barcodes. So if a
+*branded* item fails but plain foods work, that is the expected split, not a
+fault.
+
+If plain foods find nothing, the import probably has not run:
+
+```bash
+php artisan tinker --execute='echo \App\Models\FoodItem::query()->getConnection()->table("usda_foods")->count();'
+```
+
+Zero means run `php artisan foods:import-usda` (see AI_SETUP.md).
 
 ### Lookups intermittently find nothing, or every food goes branded
 

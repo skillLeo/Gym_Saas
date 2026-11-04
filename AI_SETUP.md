@@ -32,7 +32,7 @@ exists so the feature can be tuned without a code change.
 | Variable | Default | What it does |
 |---|---|---|
 | `OPENAI_API_KEY` | *(none)* | **Required.** Server-side only. Never sent to the browser. With no key the feature reports "not set up" and stays off. |
-| `USDA_API_KEY` | *(none)* | **Required.** Free, instant, from <https://api.data.gov/signup>. Supplies every calorie and macro. |
+| `USDA_API_KEY` | *(none)* | Free, from <https://api.data.gov/signup>. Needed for **branded products and barcodes only** — everyday foods come from the local tables (see below). Without it, generic food search still works. |
 | `AI_VISION_MODEL` | `gpt-6-luna` | Reads photos. Needs image input **and** structured outputs. |
 | `AI_TEXT_MODEL` | `gpt-6-luna` | Reads typed and transcribed text. |
 | `AI_TRANSCRIBE_MODEL` | `gpt-transcribe` | Speech to text. |
@@ -199,11 +199,16 @@ misconfigured. Only set it if you have pointed `AI_TEXT_MODEL` at an older
 model that accepts it.
 
 **`DEMO_KEY` is not a USDA key.** It is the shared public one, rate-limited to
-roughly 30 requests an hour across everyone using it. A single photo fans out
-to about six lookups, so you get four or five photos an hour before every food
-comes back with no nutrition match. The app reports this honestly rather than
-claiming the food does not exist, but the feature is close to useless until a
-real key is in place.
+roughly 30 requests an hour across everyone using it. This now matters far
+less than it did: with the local tables imported, ordinary foods never touch
+the API, and `DEMO_KEY` only limits branded products and barcode scanning.
+
+**FoodData Central's own reliability is the reason the local copy exists.**
+Measured over twelve identical requests while this was built: the
+`Survey (FNDDS)` data type failed six times out of twelve with a spurious
+nginx 400, and on another day the service answered none of six requests at
+all. A failed lookup is silent — no results rather than an error — so it looks
+like the food does not exist. Anything that must work should not depend on it.
 
 **A photographed menu is read as a meal.** The model will list everything on a
 menu, a packet or a nutrition label as food that was eaten. The review screen
@@ -237,6 +242,67 @@ which is why the timeouts are short and the output is capped.
 
 Nothing is enabled by the migration: `ai_features_enabled` is `false` for every
 existing member, testing mode is on, and the cap is `$8`.
+
+---
+
+## The local food database
+
+Everyday foods are served from **our own copy of USDA's curated datasets**, not
+from the live API. A lookup for "banana" is an index hit on the local tables
+and makes no network request at all; FoodData Central is left for the two
+things only it can answer — branded supermarket products and barcodes.
+
+This was not optional. The live API spent days at a time timing out or
+returning spurious 400s, and a failed lookup is silent, so a member saw no
+nutrition for ordinary food.
+
+### Importing it
+
+Download two archives from <https://fdc.nal.usda.gov/download-datasets>, put
+them in `storage/app/usda/`, and run:
+
+```bash
+php artisan foods:import-usda
+```
+
+| Dataset | File | Size |
+|---|---|---|
+| Foundation Foods | `FoodData_Central_foundation_food_csv_2026-04-30.zip` | 3.6 MB |
+| SR Legacy | `FoodData_Central_sr_legacy_food_csv_2018-04.zip` | 5.8 MB |
+
+The zips are read directly — there is nothing to unzip. The command is
+idempotent, so re-running it or importing a newer release is safe. It takes
+about six seconds and loads **8,262 foods and 14,636 portions**, adding roughly
+**3.9 MB** to the database.
+
+> **⚠️ Do not use the newest Foundation release.** USDA's `2026-10-29` archive
+> ships with no `food.csv`, `food_nutrient.csv` or `food_portion.csv` — only
+> ids and lab metadata. `2026-04-30` is the newest complete one. The importer
+> checks and refuses the broken archive by name rather than importing nothing
+> and reporting success.
+
+### On a host with no shell
+
+cPanel accounts without SSH cannot run `artisan` at all. For those there is a
+one-time SQL dump of the two finished tables, imported through **phpMyAdmin**.
+It creates the tables, fills them, and records the migration as run so a later
+deploy does not try to create them again. See the deployment notes for the
+file and the steps.
+
+### Everyday names
+
+`config/food_aliases.php` maps words the American database does not know onto
+words it does — porridge, wholemeal, aubergine, chips. Each entry is an *extra*
+search rather than a replacement, so the member's own word is always searched
+too and an ambiguous alias cannot hide the right answer. Plain PHP array, edit
+and save; nothing else needs changing.
+
+### Credit
+
+Food and nutrient data is from **USDA FoodData Central**, which is in the
+public domain (CC0 1.0). The app credits it in two places a member sees
+nutrition: under the food search results on the Food Journal, and under each
+matched food on the AI review screen.
 
 ---
 

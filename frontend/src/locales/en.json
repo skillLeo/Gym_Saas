@@ -408,6 +408,7 @@
   "foodJournal.searchPlaceholder": "Search foods...",
   "foodJournal.searchResults": "Search results",
   "foodJournal.searchToAdd": "Search for a food to add",
+  "foodJournal.nutritionSource": "Nutrition data from USDA FoodData Central (public domain)",
   "foodJournal.servingsLabel": "Servings (1 serving = {qty} {unit})",
   "foodJournal.slotNamePlaceholder": "e.g. Late Night Snack",
   "foodJournal.stayHydrated": "Stay hydrated throughout the day",

@@ -408,6 +408,7 @@
   "foodJournal.searchPlaceholder": "Rechercher des aliments...",
   "foodJournal.searchResults": "Résultats de recherche",
   "foodJournal.searchToAdd": "Recherchez un aliment à ajouter",
+  "foodJournal.nutritionSource": "Données nutritionnelles de l'USDA FoodData Central (domaine public)",
   "foodJournal.servingsLabel": "Portions (1 portion = {qty} {unit})",
   "foodJournal.slotNamePlaceholder": "ex. Collation Nocturne",
   "foodJournal.stayHydrated": "Restez hydraté toute la journée",
