@@ -54,4 +54,16 @@ audit/
 # Other clients' deliverables - work that happens to be written inside this
 # folder but does not belong to this project. Previously this showed up as
 # untracked clutter in every `git status`.
-deliverables/
+#
+# The contents are excluded rather than the folder itself, because git cannot
+# re-include anything inside an excluded DIRECTORY - the negations below would
+# silently do nothing if this said `deliverables/`.
+deliverables/*
+
+# ...except the USDA database dump, which IS this project's. It is the only
+# way to load the food tables onto a host with no shell, it is 392 KB, and the
+# data is public domain (CC0), so it belongs in the repository rather than
+# being emailed around. Tracked deliberately, not by accident.
+!deliverables/usda/
+deliverables/usda/*
+!deliverables/usda/usda_local_foods.sql.gz

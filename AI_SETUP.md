@@ -281,13 +281,53 @@ about six seconds and loads **8,262 foods and 14,636 portions**, adding roughly
 > checks and refuses the broken archive by name rather than importing nothing
 > and reporting success.
 
-### On a host with no shell
+### On a host with no shell — phpMyAdmin
 
-cPanel accounts without SSH cannot run `artisan` at all. For those there is a
-one-time SQL dump of the two finished tables, imported through **phpMyAdmin**.
-It creates the tables, fills them, and records the migration as run so a later
-deploy does not try to create them again. See the deployment notes for the
-file and the steps.
+cPanel accounts without SSH cannot run `artisan` at all, which means they
+cannot run the import **or the migration**. For those there is a ready-made
+dump of the two finished tables, committed to the repository:
+
+```
+deliverables/usda/usda_local_foods.sql.gz      392 KB
+```
+
+It is a complete job: it creates both tables with their indexes, fills them
+with all 8,262 foods and 14,636 portions, and inserts the migration row so a
+later deploy does not try to create the tables a second time and fail.
+
+**Steps**
+
+1. Download `deliverables/usda/usda_local_foods.sql.gz` from the repository.
+   **Do not unzip it** — phpMyAdmin reads `.gz` directly.
+2. cPanel → **phpMyAdmin**.
+3. In the left-hand list, click the application's database
+   (`myextremetrainer_gym`). Getting this right matters: the import runs
+   against whatever is selected.
+4. **Import** tab → **Choose File** → pick the `.sql.gz`.
+5. Leave format as **SQL** and everything else at its default. Click **Go**.
+6. It should finish in a few seconds and report success. Check the left-hand
+   list now shows `usda_foods` and `usda_food_portions`.
+
+**Verify** — click `usda_foods`, then the **SQL** tab, and run:
+
+```sql
+SELECT COUNT(*) FROM usda_foods;          -- expect 8262
+SELECT COUNT(*) FROM usda_food_portions;  -- expect 14636
+SELECT description, calories FROM usda_foods WHERE fdc_id = 173944;
+-- expect: Bananas, raw | 89.000
+```
+
+**It is safe to re-run.** The dump drops and recreates only these two tables
+and touches nothing else, and the migration row is inserted only if absent.
+
+**Limits on shared hosting.** At 392 KB the file is far below any plausible
+`upload_max_filesize`, and below the `post_max_size` that usually bites first
+(often 8 MB). The data is deliberately split into 142 statements with a
+longest line of 16 KB rather than a few enormous ones, so a low
+`max_allowed_packet` cannot choke it. It imported in 1.5 seconds on a local
+server, so even a throttled 30-second `max_execution_time` has ample room. If
+the host is unusually tight, phpMyAdmin's own **Partial import** checkbox
+resumes a part-finished run.
 
 ### Everyday names
 
