@@ -53,7 +53,14 @@ class ReportFoodMatchQuality extends Command
         // The three that prompted this work.
         'banana'            => [75,  110, 'raw 89'],
         'porridge'          => [50,  120, 'cooked oatmeal ~71'],
-        'wholemeal toast'   => [220, 300, 'whole-wheat bread ~247'],
+        /*
+         * Up to 330, not 300. The original band was set from untoasted bread
+         * and was simply wrong: USDA's own "Bread, whole-wheat, commercially
+         * prepared, toasted" is 306 kcal against 252 untoasted, because
+         * toasting drives off water and concentrates what is left. A correct
+         * match was being scored as a failure.
+         */
+        'wholemeal toast'   => [220, 330, 'whole-wheat bread 252, toasted 306'],
 
         // Fruit
         'apple'             => [40,   65, 'raw 52'],

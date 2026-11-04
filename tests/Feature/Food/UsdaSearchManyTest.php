@@ -73,9 +73,9 @@ class UsdaSearchManyTest extends TestCase
     {
         Http::fake(['*api.nal.usda.gov*' => Http::response(['foods' => [$this->food('Apples, raw')]])]);
 
-        $out = $this->usda()->searchMany(['apple', 'toast', 'egg']);
+        $out = $this->usda()->searchMany(['apple', 'pear', 'egg']);
 
-        $this->assertSame(['apple', 'toast', 'egg'], array_keys($out));
+        $this->assertSame(['apple', 'pear', 'egg'], array_keys($out));
         $this->assertSame('Apples, raw', $out['apple'][0]['name']);
     }
 
@@ -83,7 +83,7 @@ class UsdaSearchManyTest extends TestCase
     {
         $this->fakeEchoingTheQuery();
 
-        $this->usda()->searchMany(['apple', 'toast', 'egg']);
+        $this->usda()->searchMany(['apple', 'pear', 'egg']);
 
         Http::assertSentCount(3);
     }
@@ -92,22 +92,22 @@ class UsdaSearchManyTest extends TestCase
     {
         $this->fakeEchoingTheQuery();
 
-        $out = $this->usda()->searchMany(['apple', 'toast', 'apple']);
+        $out = $this->usda()->searchMany(['apple', 'pear', 'apple']);
 
         // A plate with two apples must not pay for two identical lookups.
         Http::assertSentCount(2);
         $this->assertNotEmpty($out['apple']);
-        $this->assertNotEmpty($out['toast']);
+        $this->assertNotEmpty($out['pear']);
     }
 
     public function test_a_second_call_costs_no_network_at_all(): void
     {
         $this->fakeEchoingTheQuery();
 
-        $first  = $this->usda()->searchMany(['apple', 'toast']);
+        $first  = $this->usda()->searchMany(['apple', 'pear']);
         Http::assertSentCount(2);
 
-        $second = $this->usda()->searchMany(['apple', 'toast']);
+        $second = $this->usda()->searchMany(['apple', 'pear']);
 
         // Still 2: the second call was served entirely from cache.
         Http::assertSentCount(2);
@@ -171,22 +171,28 @@ class UsdaSearchManyTest extends TestCase
             '*api.nal.usda.gov*' => Http::response(['foods' => [$this->food('Bread, toasted')]]),
         ]);
 
-        $out = $this->usda()->searchMany(['apple', 'toast']);
+        $out = $this->usda()->searchMany(['apple', 'pear']);
 
         $this->assertSame([], $out['apple']);
-        $this->assertNotEmpty($out['toast']);
+        $this->assertNotEmpty($out['pear']);
     }
 
     public function test_more_labels_than_the_concurrency_cap_all_resolve(): void
     {
         $this->fakeEchoingTheQuery();
 
-        // Real words, not single letters: "a" is a stopword, so it tokenises
-        // to nothing, cannot be judged against any candidate, and takes the
-        // branded fallback — which would make this count one request too many
-        // for a reason that has nothing to do with batching.
-        $labels = ['apple', 'toast', 'egg', 'rice', 'beans', 'pear',
-            'kale', 'tuna', 'oats', 'milk', 'plum', 'corn'];
+        /*
+         * Real words, and none of them aliased.
+         *
+         * "a" is a stopword: it tokenises to nothing, cannot be judged against
+         * any candidate, and takes the branded fallback. A word in
+         * config/food_aliases.php — "toast" was here before — is searched
+         * under a second spelling as well. Either would add a request for a
+         * reason that has nothing to do with batching, which is what this
+         * counts.
+         */
+        $labels = ['apple', 'pear', 'egg', 'rice', 'beans', 'plum',
+            'kale', 'tuna', 'oats', 'melon', 'grape', 'corn'];
         $out    = $this->usda()->searchMany($labels);
 
         // Twelve labels, a cap of five: three batches, nothing dropped.
@@ -202,9 +208,9 @@ class UsdaSearchManyTest extends TestCase
         config(['services.usda.api_key' => null]);
         Http::fake();
 
-        $out = $this->usda()->searchMany(['apple', 'toast']);
+        $out = $this->usda()->searchMany(['apple', 'pear']);
 
-        $this->assertSame(['apple' => [], 'toast' => []], $out);
+        $this->assertSame(['apple' => [], 'pear' => []], $out);
         Http::assertNothingSent();
     }
 

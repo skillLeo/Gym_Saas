@@ -5,8 +5,10 @@ namespace App\Services;
 use App\Models\SystemSetting;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Client\Pool;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Food lookups against USDA FoodData Central.
@@ -166,18 +168,11 @@ class UsdaFoodData
      */
     private function searchRaw(string $query, int $limit, ?string $alternate = null): array
     {
-        if (! $this->configured()) {
-            return [];
-        }
-
         $key = $this->cacheKey($query, $limit, $alternate);
 
         if (($hit = Cache::get($key)) !== null) {
             return $hit;
         }
-
-        $variants = [$query];
-        $found    = $this->fetch($query, self::GENERIC_TYPES);
 
         /*
          * The US spelling is searched WHENEVER there is one, not only after
@@ -189,32 +184,257 @@ class UsdaFoodData
          * query we already know is written in the wrong dialect should be
          * asked both ways and the results judged together.
          */
-        $second = filled($alternate) ? (string) $alternate : $this->usEquivalent($query);
+        $variants = $this->variantsFor($query, $alternate);
+        $second   = $variants[1] ?? null;
 
         /*
-         * Once the service has said it is unavailable, no further passes are
-         * fired — matching what searchMany() already did. Carrying on meant a
-         * lookup that had already timed out twice spent another full timeout
-         * on the branded pass before giving up, which is where most of the 24
-         * seconds a failing lookup used to take actually went.
+         * 1. THE LOCAL TABLES FIRST — no network at all.
+         *
+         * These hold USDA's two curated datasets, which is where the answer to
+         * an ordinary food word lives. Before this, every "banana" cost a
+         * request to a service that was timing out half the time; now it costs
+         * an index lookup, and the live API is left for the things only it can
+         * answer.
          */
-        if (filled($second) && ! $this->unavailable && mb_strtolower((string) $second) !== mb_strtolower($query)) {
-            $alt = $this->fetch((string) $second, self::GENERIC_TYPES);
-
-            if ($alt !== []) {
-                $variants[] = (string) $second;
-                $found      = array_merge($found, $alt);
-            }
-        }
-
+        $found  = $this->localSearch($variants);
         $ranked = $this->rank($found, $variants);
 
+        if ($this->goodEnough($ranked, $variants)) {
+            return $this->remember($key, $ranked, $limit);
+        }
+
+        // Nothing local answered. Without a key there is nowhere else to look,
+        // and whatever weak local candidates exist are better than nothing.
+        if (! $this->configured()) {
+            return $this->remember($key, $ranked, $limit);
+        }
+
+        /*
+         * 2. The curated sets over the API, but ONLY where there is no local
+         *    copy to consult. With the tables imported this is dead weight:
+         *    it would ask the network for the same datasets already on disk.
+         */
+        if (! $this->localReady()) {
+            $found = array_merge($found, $this->fetch($query, self::GENERIC_TYPES));
+
+            if (filled($second) && ! $this->unavailable && mb_strtolower((string) $second) !== mb_strtolower($query)) {
+                $found = array_merge($found, $this->fetch((string) $second, self::GENERIC_TYPES));
+            }
+
+            $ranked = $this->rank($found, $variants);
+        }
+
+        /*
+         * 3. Branded, which is never held locally — it is two million
+         *    supermarket products and changes constantly.
+         *
+         * Once the service has said it is unavailable no further passes are
+         * fired: a lookup that has already timed out twice must not spend
+         * another full timeout here before giving up.
+         */
         if (! $this->unavailable && ! $this->goodEnough($ranked, $variants)) {
             $found  = array_merge($found, $this->fetch($query, self::BRANDED_TYPES));
             $ranked = $this->rank($found, $variants);
         }
 
         return $this->remember($key, $ranked, $limit);
+    }
+
+    // ------------------------------------------------------- the local copy
+
+    /**
+     * Every spelling a query should be searched under, the original first.
+     *
+     * BOTH the caller's alternate and the configured alias, not one or the
+     * other. The AI path supplies the model's plain US name, and preferring it
+     * threw the curated list away: the model offered "oatmeal" for porridge,
+     * which finds oatmeal BREAD, while config/food_aliases.php knows to ask
+     * for the cooked cereal. Searching both and letting rank() choose costs
+     * one local query and cannot do worse than either alone.
+     *
+     * @return list<string>
+     */
+    private function variantsFor(string $query, ?string $alternate): array
+    {
+        $variants = [$query];
+
+        foreach ([$alternate, $this->usEquivalent($query)] as $candidate) {
+            if (! filled($candidate)) {
+                continue;
+            }
+
+            $seen = array_map('mb_strtolower', $variants);
+
+            if (! in_array(mb_strtolower((string) $candidate), $seen, true)) {
+                $variants[] = (string) $candidate;
+            }
+        }
+
+        return $variants;
+    }
+
+    /** Set once per instance; the answer cannot change mid-request. */
+    private ?bool $localReady = null;
+
+    /**
+     * Is there a local copy of the curated datasets to search?
+     *
+     * False on a fresh install that has never run `foods:import-usda`, and in
+     * the tests that exercise the API path. Everything still works then — it
+     * just goes over the network, exactly as it did before.
+     */
+    private function localReady(): bool
+    {
+        if ($this->localReady !== null) {
+            return $this->localReady;
+        }
+
+        try {
+            $this->localReady = Schema::hasTable('usda_foods')
+                && DB::table('usda_foods')->limit(1)->exists();
+        } catch (\Throwable) {
+            // No database, or mid-migration. Not a reason to fail a lookup.
+            $this->localReady = false;
+        }
+
+        return $this->localReady;
+    }
+
+    /**
+     * Candidates from the local tables, in the shape the ranking expects.
+     *
+     * Deliberately generous: it returns far more than the caller asked for and
+     * lets rank() choose, because the whole point of the ranking work was that
+     * the database's own idea of relevance is not ours.
+     *
+     * @param  list<string>  $variants
+     * @return list<array<string,mixed>>
+     */
+    private function localSearch(array $variants, int $perVariant = 300): array
+    {
+        if (! $this->localReady()) {
+            return [];
+        }
+
+        $byId = [];
+
+        foreach ($variants as $variant) {
+            foreach ($this->localRows($variant, $perVariant) as $row) {
+                $byId[(int) $row->fdc_id] = $this->mapLocal($row);
+            }
+        }
+
+        return array_values($byId);
+    }
+
+    /**
+     * One local query, by FULLTEXT where there is one and LIKE where there is not.
+     *
+     * The LIKE path is not only a sqlite fallback: InnoDB's FULLTEXT ignores
+     * tokens shorter than `innodb_ft_min_token_size` (three by default), so
+     * "egg" and "ham" would silently match nothing. Short words go to LIKE on
+     * MySQL too.
+     *
+     * @return list<object>
+     */
+    private function localRows(string $query, int $limit): array
+    {
+        $tokens = $this->tokens($query);
+
+        if ($tokens === []) {
+            return [];
+        }
+
+        $base = DB::table('usda_foods')
+            ->select('fdc_id', 'description', 'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg')
+            // Search never offers a food it cannot put a calorie figure on —
+            // the same rule the API path applies to its own results.
+            ->whereNotNull('calories')
+            ->limit($limit);
+
+        /*
+         * Each word kept BOTH as typed and singularised, because neither form
+         * matches the other reliably.
+         *
+         * "banana*" reaches "Bananas, raw", so singularising helps there. But
+         * "strawberries" singularises to "strawberry", and neither
+         * "strawberry*" nor "%strawberry%" matches "Strawberries" — which is
+         * why a search for strawberries returned guavas and never saw the
+         * strawberry at all. Likewise "fries" becomes "fry", and "%fry%" does
+         * not match "French fries".
+         *
+         * @var list<list<string>> one pair per word of the query
+         */
+        $pairs = [];
+        foreach (preg_split('/[^a-z0-9]+/', mb_strtolower($query)) ?: [] as $word) {
+            if ($word === '' || isset(self::NOISE[$word])) {
+                continue;
+            }
+
+            $pairs[] = array_values(array_unique([$word, $this->singular($word)]));
+        }
+
+        if ($pairs === []) {
+            return [];
+        }
+
+        $flat     = array_merge(...$pairs);
+        $shortest = min(array_map('strlen', $flat));
+
+        if (DB::connection()->getDriverName() === 'mysql' && $shortest >= 3) {
+            // Prefix-matched. Not AND-ed: requiring every word would lose
+            // "Bread, whole-wheat" for "whole wheat toast", and rank() is
+            // what decides which candidate wins anyway.
+            $against = implode(' ', array_map(static fn ($t) => $t.'*', $flat));
+
+            return $base
+                ->whereRaw('MATCH(description) AGAINST(? IN BOOLEAN MODE)', [$against])
+                ->orderByRaw('MATCH(description) AGAINST(? IN BOOLEAN MODE) DESC', [$against])
+                ->get()
+                ->all();
+        }
+
+        // Every word must appear in one of its forms.
+        foreach ($pairs as $forms) {
+            $base->where(function ($q) use ($forms) {
+                foreach ($forms as $form) {
+                    $q->orWhere('description', 'like', '%'.$form.'%');
+                }
+            });
+        }
+
+        return $base->get()->all();
+    }
+
+    /**
+     * A local row in the same shape mapFood() produces for an API result.
+     *
+     * `kind` is always generic: both imported datasets are USDA's curated
+     * foods. `source` stays 'usda' and the id stays FoodData Central's own, so
+     * a food found here and the same food found over the API resolve to one
+     * food_items row.
+     *
+     * @return array<string,mixed>
+     */
+    private function mapLocal(object $row): array
+    {
+        return [
+            'external_food_id'     => (string) $row->fdc_id,
+            'source'               => 'usda',
+            'kind'                 => 'generic',
+            'name'                 => (string) $row->description,
+            'brand'                => null,
+            'serving_qty'          => 100,
+            'serving_unit'         => 'g',
+            'serving_weight_grams' => 100,
+            'calories'             => $row->calories === null ? null : (float) $row->calories,
+            'protein_g'            => (float) ($row->protein_g ?? 0),
+            'carbs_g'              => (float) ($row->carbs_g ?? 0),
+            'fat_g'                => (float) ($row->fat_g ?? 0),
+            'fiber_g'              => (float) ($row->fiber_g ?? 0),
+            'sugar_g'              => (float) ($row->sugar_g ?? 0),
+            'sodium_mg'            => (float) ($row->sodium_mg ?? 0),
+        ];
     }
 
     /**
@@ -286,10 +506,6 @@ class UsdaFoodData
         $found   = [];   // query => candidates gathered so far
         $variant = [];   // query => spellings searched under
 
-        if (! $this->configured()) {
-            return array_fill_keys($queries, []);
-        }
-
         foreach ($queries as $query) {
             $hit = Cache::get($this->cacheKey($query, $limit, $alternates[$query] ?? null));
 
@@ -302,41 +518,76 @@ class UsdaFoodData
         }
 
         /*
-         * Up to three pooled rounds, each over a strictly smaller set, so the
-         * ordinary case where the curated foods answer at once still costs a
-         * single round trip.
+         * THE LOCAL TABLES FIRST, for every label at once and with no network.
          *
-         *   1. the curated sets, as the member said it;
-         *   2. the curated sets again under a US spelling, for the few that
-         *      found nothing — "porridge" is not a word this database knows;
-         *   3. branded, for whatever is still unanswered.
+         * A plate of food yields six or more labels, and before this each one
+         * was a request to a service that was timing out half the time. Most
+         * of them are ordinary foods that the curated datasets on disk answer
+         * outright, so the pooled rounds below usually have nothing left to
+         * do. Without a key this is the only step there is — which is the
+         * point: the food journal keeps working when FoodData Central does not.
          */
-        $this->poolFetch($found, array_fill_keys(array_keys($found), null), self::GENERIC_TYPES);
+        foreach ($found as $query => $_) {
+            $query             = (string) $query;
+            $variant[$query]   = $this->variantsFor($query, $alternates[$query] ?? null);
+            $found[$query]     = $this->localSearch($variant[$query]);
+        }
 
-        /*
-         * Round two covers every term that HAS another spelling, not only the
-         * ones round one failed on — see the note in searchRaw(). A query that
-         * looks half-answered by the wrong food is the case this exists for.
-         */
-        $second = [];
-        foreach (array_keys($found) as $q) {
-            $q   = (string) $q;
-            $alt = filled($alternates[$q] ?? null) ? (string) $alternates[$q] : $this->usEquivalent($q);
+        foreach ($this->answered($found, $variant) as $query) {
+            $results[$query] = $this->remember(
+                $this->cacheKey($query, $limit, $alternates[$query] ?? null),
+                $this->rank($found[$query], $variant[$query]),
+                $limit,
+            );
+            unset($found[$query]);
+        }
 
-            if (filled($alt) && mb_strtolower((string) $alt) !== mb_strtolower($q)) {
-                $second[$q]    = (string) $alt;
-                $variant[$q][] = (string) $alt;
+        // Everything the local copy settled is done; only the rest goes out.
+        if ($found === [] || ! $this->configured()) {
+            foreach ($found as $query => $candidates) {
+                $results[$query] = $this->remember(
+                    $this->cacheKey($query, $limit, $alternates[$query] ?? null),
+                    $this->rank($candidates, $variant[$query]),
+                    $limit,
+                );
             }
+
+            return $this->reKey($queries, $results);
         }
 
         /*
-         * Once the service has told us it is unavailable — a rate limit, or
-         * repeated failures — no further rounds are fired. Carrying on would
-         * mean answering a 429 by making more requests, and the later rounds
-         * would be scored as though the first had simply found nothing.
+         * What is left goes over the network, in pooled rounds over a steadily
+         * smaller set.
+         *
+         * The curated rounds run only where there is NO local copy to consult,
+         * because with the tables imported they would be asking the network
+         * for datasets already on disk. With a local copy the only thing the
+         * API still has that we do not is Branded.
          */
-        if ($second !== [] && ! $this->unavailable) {
-            $this->poolFetch($found, $second, self::GENERIC_TYPES);
+        if (! $this->localReady()) {
+            $this->poolFetch($found, array_fill_keys(array_keys($found), null), self::GENERIC_TYPES);
+
+            $second = [];
+            foreach (array_keys($found) as $q) {
+                $q = (string) $q;
+
+                // The variants were already decided above; the second one, if
+                // there is one, is the US spelling to search under.
+                if (isset($variant[$q][1])) {
+                    $second[$q] = $variant[$q][1];
+                }
+            }
+
+            /*
+             * Once the service has told us it is unavailable — a rate limit,
+             * or repeated failures — no further rounds are fired. Carrying on
+             * would mean answering a 429 by making more requests, and the
+             * later rounds would be scored as though the first had simply
+             * found nothing.
+             */
+            if ($second !== [] && ! $this->unavailable) {
+                $this->poolFetch($found, $second, self::GENERIC_TYPES);
+            }
         }
 
         $stillUnanswered = $this->unavailable ? [] : $this->unanswered($found, $variant);
@@ -353,7 +604,32 @@ class UsdaFoodData
             );
         }
 
-        // Re-key in the caller's order, including duplicates they may have sent.
+        return $this->reKey($queries, $results);
+    }
+
+    /**
+     * Which queries already have a candidate worth showing.
+     *
+     * @param  array<string,list<array<string,mixed>>>  $found
+     * @param  array<string,list<string>>               $variant
+     * @return list<string>
+     */
+    private function answered(array $found, array $variant): array
+    {
+        $unanswered = $this->unanswered($found, $variant);
+
+        return array_values(array_diff(array_map('strval', array_keys($found)), $unanswered));
+    }
+
+    /**
+     * Re-key in the caller's order, including duplicates they may have sent.
+     *
+     * @param  list<string>                             $queries
+     * @param  array<string,list<array<string,mixed>>>  $results
+     * @return array<string,list<array<string,mixed>>>
+     */
+    private function reKey(array $queries, array $results): array
+    {
         return array_reduce(
             $queries,
             function (array $carry, string $q) use ($results) {
@@ -584,6 +860,15 @@ class UsdaFoodData
         // tuna salad", "Oat bran", "Bacon, meatless", "Potato pancakes".
         'breaded', 'tender', 'nugget', 'leave', 'bran', 'salad', 'meatless',
         'pancake', 'sherbet', 'croissant',
+        // Same rule again, found once the local datasets were searchable:
+        // "Oat milk" for oats and "Sweet Potato puffs" for sweet potato.
+        //
+        // "skin" was tried here too, for "Potatoes, raw, skin", and taken out
+        // again: USDA also writes "Apples, raw, WITHOUT skin", where the word
+        // marks a qualifier rather than a product made from the food, and
+        // penalising it pushed the right apple below a tin of sweetened
+        // apple slices. One word, two meanings, so it stays out.
+        'milk', 'puff',
     ];
 
     /**
@@ -596,40 +881,23 @@ class UsdaFoodData
      * name per item; this map covers the manual search box, which has no model
      * behind it, and acts as a backstop when the model does not supply one.
      *
-     * Word-level and deliberately conservative: only terms with one unambiguous
-     * US equivalent. "Chips" and "biscuit" are not here precisely because they
-     * do not have one.
-     */
-    private const US_TERMS = [
-        'wholemeal'  => 'whole wheat',
-        // Not "oatmeal": without Survey (FNDDS) the only oatmeal entries in
-        // the curated sets are oatmeal BREAD. The cooked cereal is filed under
-        // oats, so that is what to ask for.
-        'porridge'   => 'oats cooked',
-        'aubergine'  => 'eggplant',
-        'courgette'  => 'zucchini',
-        'coriander'  => 'cilantro',
-        'rocket'     => 'arugula',
-        'prawn'      => 'shrimp',
-        'prawns'     => 'shrimp',
-        'beetroot'   => 'beets',
-        'sultanas'   => 'raisins',
-        'yoghurt'    => 'yogurt',
-        'swede'      => 'rutabaga',
-        'mangetout'  => 'snow peas',
-    ];
-
-    /**
-     * The same query written the way the database spells it, or null.
+     * The vocabulary itself lives in config/food_aliases.php, not here: it is
+     * a word list rather than logic, it needs editing far more often than this
+     * class does, and whoever wants to add "gammon" should not have to read a
+     * service to do it. Each alias is an EXTRA search, never a replacement, so
+     * even an ambiguous one such as chips/fries cannot hide what was asked for.
      */
     private function usEquivalent(string $query): ?string
     {
+        /** @var array<string,string> $aliases */
+        $aliases = config('food_aliases', []);
+
         $words   = preg_split('/\s+/', mb_strtolower(trim($query))) ?: [];
         $changed = false;
 
         foreach ($words as $i => $w) {
-            if (isset(self::US_TERMS[$w])) {
-                $words[$i] = self::US_TERMS[$w];
+            if (isset($aliases[$w])) {
+                $words[$i] = $aliases[$w];
                 $changed   = true;
             }
         }
@@ -803,7 +1071,22 @@ class UsdaFoodData
             $scored[] = ['i' => $i, 'food' => $food, 'score' => $this->score($food, $tokenised)];
         }
 
-        usort($scored, fn ($a, $b) => $b['score'] <=> $a['score'] ?: $a['i'] <=> $b['i']);
+        /*
+         * Ties are broken on the food's own id, not on the order it arrived in.
+         *
+         * Equal scores are common and not a flaw — "Tofu, fried" and "Tofu
+         * yogurt" answer "tofu" exactly as well as each other by every rule
+         * here. What WAS a flaw is that the winner then depended on whatever
+         * order the database happened to return, so the same query could give
+         * different answers on consecutive runs and a change in the candidate
+         * limit silently reshuffled results that had nothing to do with it.
+         *
+         * The id is arbitrary but stable, and mildly useful: SR Legacy's
+         * long-established foods carry lower ids than later additions.
+         */
+        usort($scored, fn ($a, $b) => $b['score'] <=> $a['score']
+            ?: ((int) ($a['food']['external_food_id'] ?? PHP_INT_MAX) <=> (int) ($b['food']['external_food_id'] ?? PHP_INT_MAX))
+            ?: $a['i'] <=> $b['i']);
 
         return array_map(
             fn ($s) => $s['food'] + ['match_score' => round($s['score'], 3)],
