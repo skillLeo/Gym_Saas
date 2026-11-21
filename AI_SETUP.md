@@ -236,6 +236,38 @@ php artisan migrate        # ai_usage_logs, plus three columns on users
 php artisan config:clear
 ```
 
+### If the server has no SSH
+
+**The test host does not have SSH, so the block above cannot be run there.**
+Without those two migrations every AI request fails and the admin usage screen
+has nothing to read, so this is not optional the way the food data is.
+
+Import this through phpMyAdmin instead — same database, same **Import** tab as
+the food dump below:
+
+```
+deliverables/ai/ai_phase11_schema.sql        6 KB, plain SQL
+```
+
+It creates `ai_usage_logs`, adds the three `ai_*` columns to `users`, and
+records both migrations as run so a later `php artisan migrate` — from a
+machine that does have a shell — reports *Nothing to migrate* instead of
+failing on a duplicate.
+
+**It is safe to run twice, and it destroys nothing.** In particular it never
+drops `ai_usage_logs`: that table is the spend ledger, and the monthly cap is
+measured against it.
+
+Verified on a copy of the real schema: migrate from empty, drop the three
+Phase 11 migrations to imitate a server that never ran them, import this file
+and the food dump through the database, then `php artisan migrate` — which
+answers *Nothing to migrate*, with all 8,262 foods and the three columns in
+place.
+
+`php artisan config:clear` has no no-shell equivalent. Delete
+`bootstrap/cache/config.php` through cPanel's File Manager instead; Laravel
+rebuilds it on the next request.
+
 Nothing needs a queue worker or a cron job. AI calls happen inside the member's
 own request — this host cannot fork, so there is no worker to hand them to,
 which is why the timeouts are short and the output is capped.
@@ -298,7 +330,14 @@ later deploy does not try to create the tables a second time and fail.
 **Steps**
 
 1. Download `deliverables/usda/usda_local_foods.sql.gz` from the repository.
-   **Do not unzip it** — phpMyAdmin reads `.gz` directly.
+   **Do not unzip it** — phpMyAdmin reads `.gz` directly. If this particular
+   phpMyAdmin refuses the file (some builds are configured without zlib and
+   answer "You probably tried to upload a file that is too large" or show an
+   empty format list), unzip it locally and import the plain `.sql`. It is
+   2.2 MB unzipped, still under the usual 8 MB `post_max_size`, so this
+   fallback normally works; if the upload itself is refused, use phpMyAdmin's
+   **Partial import** checkbox, or put the file in the account's home
+   directory and import it from there.
 2. cPanel → **phpMyAdmin**.
 3. In the left-hand list, click the application's database
    (`myextremetrainer_gym`). Getting this right matters: the import runs
@@ -318,7 +357,11 @@ SELECT description, calories FROM usda_foods WHERE fdc_id = 173944;
 ```
 
 **It is safe to re-run.** The dump drops and recreates only these two tables
-and touches nothing else, and the migration row is inserted only if absent.
+and touches nothing else, and the migration row is inserted only if absent. It
+also creates the `migrations` table if it is somehow missing, so importing into
+an empty database cannot fail on the final statement after all the food has
+already been written — an error there looks like the whole import failed when
+only the bookkeeping did.
 
 **Limits on shared hosting.** At 392 KB the file is far below any plausible
 `upload_max_filesize`, and below the `post_max_size` that usually bites first

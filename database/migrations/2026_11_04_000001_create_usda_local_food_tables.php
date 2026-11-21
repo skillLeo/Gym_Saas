@@ -29,7 +29,8 @@ use Illuminate\Support\Facades\Schema;
  * other ~470 nutrients are not imported.
  *
  * Expected size after import: about 8,260 foods and 14,600 portions, roughly
- * 2.6 MB including the index.
+ * 3.9 MB of table and index together — 2.1 MB for the foods and 1.8 MB for
+ * the portions, measured after a real import rather than estimated.
  */
 return new class extends Migration
 {
