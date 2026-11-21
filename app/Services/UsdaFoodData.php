@@ -395,6 +395,32 @@ class UsdaFoodData
     }
 
     /**
+     * One food by its FoodData Central id, from our own tables.
+     *
+     * This is how the server checks a figure the browser asserts. The confirm
+     * endpoint is handed a whole food object — name, brand, all seven
+     * nutrients — and writes it to a row that is SHARED between members when
+     * it carries an external id. Trusting that payload meant one member could
+     * define what a real USDA food contains for everybody else. Where we hold
+     * the food ourselves, our copy is the answer and the payload is ignored.
+     *
+     * @return array<string,mixed>|null
+     */
+    public function byFdcId(string $fdcId): ?array
+    {
+        if (! ctype_digit($fdcId) || ! $this->localReady()) {
+            return null;
+        }
+
+        $row = DB::table('usda_foods')
+            ->where('fdc_id', (int) $fdcId)
+            ->whereNotNull('calories')
+            ->first(['fdc_id', 'description', 'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g', 'sodium_mg']);
+
+        return $row === null ? null : $this->mapLocal($row);
+    }
+
+    /**
      * Candidates from the local tables, in the shape the ranking expects.
      *
      * Deliberately generous: it returns far more than the caller asked for and
@@ -476,8 +502,21 @@ class UsdaFoodData
             return null;
         }
 
+        /*
+         * A preparation-qualified entry wins over the plain one.
+         *
+         * "Rice" means cooked rice to someone logging dinner, and dry rice to
+         * someone weighing it out — 130 kcal against 365. One key cannot say
+         * both, and without this the raw case fell through to ranking and
+         * answered "Rice, black, unenriched, raw". `rice:raw` says it
+         * outright, and the plain `rice` still covers everything else.
+         */
         foreach ($variants as $variant) {
             $key = preg_replace('/\s+/', ' ', trim(mb_strtolower($variant)));
+
+            if ($this->preparation !== null && isset($preferred[$key.':'.$this->preparation])) {
+                return (int) $preferred[$key.':'.$this->preparation];
+            }
 
             if (isset($preferred[$key])) {
                 return (int) $preferred[$key];

@@ -10,6 +10,7 @@ use App\Services\Ai\Exceptions\AiException;
 use App\Services\Ai\FoodAnalyzer;
 use App\Services\Ai\MediaPreparer;
 use App\Services\FoodJournal;
+use App\Services\UsdaFoodData;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -39,6 +40,9 @@ class AiFoodLogController extends Controller
         private readonly AiClient $client,
         private readonly MediaPreparer $media,
         private readonly FoodJournal $journal,
+        // Used to check a figure the browser asserts against our own copy of
+        // the food, rather than storing what it was handed. See resolveFood().
+        private readonly UsdaFoodData $usda,
     ) {
     }
 
@@ -276,10 +280,15 @@ class AiFoodLogController extends Controller
             ]);
         }
 
-        // Shared with /food-log/from-api, so the same USDA food is one record
-        // however the member logged it. See FoodJournal for the key and for
-        // why the two paths used to disagree about it.
-        return $this->journal->findOrCreateExternalFood($item['food']);
+        /*
+         * A food record carrying an external id is SHARED between members, so
+         * what goes into it cannot be whatever the browser said. The rule
+         * lives in FoodJournal because /food-log/from-api needs exactly the
+         * same one — those two paths disagreeing is what produced duplicate
+         * food records last time, and here it would decide whose calorie
+         * figure other people inherit.
+         */
+        return $this->journal->resolveExternalFood($user, $item['food']);
     }
 
     /**

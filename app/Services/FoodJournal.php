@@ -6,6 +6,7 @@ use App\Models\FoodItem;
 use App\Models\FoodLogEntry;
 use App\Models\MealSlot;
 use App\Models\User;
+use App\Services\UsdaFoodData;
 
 /**
  * The one place a food_log_entries row is written.
@@ -111,6 +112,103 @@ class FoodJournal
      * share a name, and the same id can mean different things in different
      * databases. With no external id there is nothing to key on but the name.
      */
+    public function __construct(
+        /*
+         * Used to check a food record against our own copy before it is
+         * written. See resolveExternalFood(): a row carrying an external id is
+         * shared between members, so what goes in it cannot be whatever the
+         * browser said.
+         */
+        private readonly UsdaFoodData $usda,
+    ) {
+    }
+
+    /**
+     * The food record for an external food, verified where we can verify it.
+     *
+     * BOTH write paths go through here — the AI confirm endpoint and the older
+     * /food-log/from-api used by search and barcode. That is the point. They
+     * disagreed once before about what makes two foods the same, and one real
+     * apple became two records depending on which screen a member used first.
+     * Giving them different trust rules would split them again, and this time
+     * the split would decide whose calorie figure other people inherit.
+     *
+     * Verified food -> our figures, one shared row, as before.
+     * Unverifiable  -> the member's own row, so a wrong number stays theirs.
+     */
+    public function resolveExternalFood(User $user, array $data): FoodItem
+    {
+        $externalId = (string) ($data['external_food_id'] ?? '');
+
+        if ($externalId === '') {
+            return $this->findOrCreateExternalFood($data);
+        }
+
+        $authoritative = $this->usda->byFdcId($externalId);
+
+        if ($authoritative !== null) {
+            return $this->findOrCreateExternalFood($authoritative + ['food_source' => 'usda']);
+        }
+
+        /*
+         * Not a food we hold, but one we already have a shared record for —
+         * a branded product someone logged earlier, or a row that predates
+         * the local import. Reuse it exactly as before and do NOT rewrite its
+         * figures: that is the de-duplication this already had, and the
+         * poisoning route is closed by the line below rather than by
+         * distrusting every record ever written.
+         */
+        $existing = FoodItem::where('external_food_id', $externalId)
+            ->where('is_custom', false)
+            ->first();
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        /*
+         * Unverifiable and unknown. Loggable, but as the member's own food:
+         * no NEW shared record is ever created from figures we cannot check,
+         * so a wrong number can only reach the person who entered it.
+         */
+        return $this->findOrCreateOwnedFood($user, $data);
+    }
+
+    /**
+     * A food we could not verify, owned by the member who entered it.
+     *
+     * Branded products are not in the local tables, so their figures cannot be
+     * checked against anything. They still have to be loggable — but not into
+     * the shared row, because an unverifiable number there becomes everyone's
+     * number. Marked custom and stamped with an owner, so the blast radius of
+     * a wrong figure is the person who typed it.
+     */
+    public function findOrCreateOwnedFood(User $user, array $data): FoodItem
+    {
+        return FoodItem::firstOrCreate(
+            [
+                'external_food_id'   => (string) $data['external_food_id'],
+                'created_by_user_id' => $user->id,
+                'is_custom'          => true,
+            ],
+            [
+                'name'                 => $data['name'],
+                'brand'                => $data['brand'] ?? null,
+                'food_source'          => $data['food_source'] ?? 'usda',
+                'serving_qty'          => $data['serving_qty'],
+                'serving_unit'         => $data['serving_unit'],
+                'serving_weight_grams' => $data['serving_weight_grams'] ?? null,
+                'calories'             => $data['calories'],
+                'protein_g'            => $data['protein_g'],
+                'carbs_g'              => $data['carbs_g'],
+                'fat_g'                => $data['fat_g'],
+                'fiber_g'              => $data['fiber_g'] ?? null,
+                'sugar_g'              => $data['sugar_g'] ?? null,
+                'sodium_mg'            => $data['sodium_mg'] ?? null,
+            ],
+        );
+    }
+
     public function findOrCreateExternalFood(array $data): FoodItem
     {
         $externalId = filled($data['external_food_id'] ?? null)

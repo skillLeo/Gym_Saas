@@ -136,7 +136,7 @@ class FoodLogController extends Controller
         // Shared with the AI confirm endpoint, so the same USDA food is one
         // record however the member logged it. See FoodJournal for why the
         // two paths used to disagree.
-        $food = $this->journal->findOrCreateExternalFood($validated['food_data']);
+        $food = $this->journal->resolveExternalFood($request->user(), $validated["food_data"]);
 
         $entry = $this->journal->log(
             $request->user(),
