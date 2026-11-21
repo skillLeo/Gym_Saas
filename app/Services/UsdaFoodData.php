@@ -148,7 +148,7 @@ class UsdaFoodData
     public function search(string $query, int $limit = 25, ?string $alternate = null, ?string $preparation = null): array
     {
         $this->unavailable = false;
-        $this->preparation = $this->normalisePreparation($preparation);
+        $this->preparation = $this->sharpen($query, $this->normalisePreparation($preparation));
 
         try {
             return $this->searchRaw($query, $limit, $alternate);
@@ -163,6 +163,49 @@ class UsdaFoodData
         $key = mb_strtolower(trim((string) $preparation));
 
         return isset(self::PREPARATION_WORDS[$key]) ? $key : null;
+    }
+
+    /**
+     * Let the words of the query itself override a merely generic "cooked".
+     *
+     * The model is told to answer "cooked" for anything on a plate when it
+     * cannot tell how, and it often does that while naming the dish precisely:
+     * label "fried egg", preparation "cooked". The label is then the better
+     * evidence of the two, and without this the generic answer wins — "fried
+     * egg" with preparation "cooked" still resolved to the hard-boiled entry,
+     * because the alias "egg" carries a preferred food that "cooked" does not
+     * contradict.
+     *
+     * ONLY over "cooked", never over null. A null preparation is the manual
+     * search box, which asks a different question: someone typing "fried egg"
+     * into a search field is looking for every egg, and narrowing their search
+     * from under them is not this method's business.
+     *
+     * Never over a specific preparation either. If the model looked at the
+     * plate and said "boiled", a stray word in the label does not get to
+     * overrule what it saw.
+     */
+    private function sharpen(string $query, ?string $preparation): ?string
+    {
+        if ($preparation !== 'cooked') {
+            return $preparation;
+        }
+
+        $words = preg_split('/[^a-z]+/', mb_strtolower($query)) ?: [];
+
+        foreach (array_keys(self::PREPARATION_WORDS) as $candidate) {
+            // "cooked" is what we already have, and "raw" cannot be meant by
+            // something the model has just called cooked.
+            if ($candidate === 'cooked' || $candidate === 'raw') {
+                continue;
+            }
+
+            if (in_array($candidate, $words, true)) {
+                return $candidate;
+            }
+        }
+
+        return $preparation;
     }
 
     /**
@@ -316,7 +359,10 @@ class UsdaFoodData
     /** Point the preparation rules at one label of a pooled lookup. */
     private function usePreparationFor(string $query): void
     {
-        $this->preparation = $this->preparationByQuery[$query] ?? null;
+        // sharpen() for the same reason search() does it: the pooled path is
+        // the one the AI actually uses, and this is where "fried egg" with a
+        // generic "cooked" arrives.
+        $this->preparation = $this->sharpen($query, $this->preparationByQuery[$query] ?? null);
     }
 
     /**
@@ -341,13 +387,11 @@ class UsdaFoodData
          */
         $words = preg_split('/[^a-z]+/', mb_strtolower($description)) ?: [];
 
-        foreach (self::PREPARATION_WORDS[$this->preparation] as $wanted) {
-            if (in_array($wanted, $words, true)) {
-                return 1.2;
-            }
-        }
-
-        // Contradiction: raw asked for and the entry is cooked, or the reverse.
+        /*
+         * RAW AGAINST COOKED IS THE BIG DISAGREEMENT, so it is settled first.
+         * It is the one worth a full penalty: raw chicken is 112 kcal against
+         * 165 roasted, dry pasta 371 against 157 cooked.
+         */
         $opposite = $this->preparation === 'raw'
             ? self::PREPARATION_WORDS['cooked']
             : self::PREPARATION_WORDS['raw'];
@@ -358,13 +402,70 @@ class UsdaFoodData
             }
         }
 
+        foreach (self::PREPARATION_WORDS[$this->preparation] as $wanted) {
+            if (in_array($wanted, $words, true)) {
+                return 1.2;
+            }
+        }
+
         return 0.0;
     }
 
-    /** Does this description agree with the stated preparation? */
+    /**
+     * Is this description a good enough fit to be FORCED to the top?
+     *
+     * Stricter than a non-negative score, and the difference is the whole
+     * point. This gates the preferred-food bonus, which is +100 and settles
+     * the question by itself; the score above only tips a close decision. So
+     * "says nothing about the preparation" is good enough for ranking and not
+     * good enough to override it.
+     *
+     * Found by photographing a full English breakfast. The model read the
+     * fried egg correctly and said so — label "Fried egg", preparation
+     * "fried" — and the review screen offered "Egg, whole, cooked,
+     * hard-boiled". The fried entry exists, 196 kcal against 155, and it was
+     * sitting second, because `egg` in config/food_preferred.php points at the
+     * hard-boiled row and a score of 0.0 counted as agreement.
+     *
+     * The rule: a description naming a cooking method, and naming none this
+     * preparation accepts, is describing a different dish.
+     *
+     * Agreement is checked FIRST because a description can name several
+     * methods. "Pork, cured, bacon, cooked, broiled, pan-fried or roasted"
+     * contains broiled, fried and roasted at once; rejecting on the first
+     * foreign word found threw away the right answer for fried bacon over the
+     * word "broiled" in its own name.
+     *
+     * "Cooked" is exempt: it is the photo default and means only "not raw", so
+     * it must keep accepting every method, or every photographed meal would
+     * start disowning its own best entry.
+     */
     private function matchesPreparation(string $description): bool
     {
-        return $this->preparationScore($description) >= 0.0;
+        if ($this->preparationScore($description) < 0.0) {
+            return false;
+        }
+
+        if ($this->preparation === null || $this->preparation === 'cooked') {
+            return true;
+        }
+
+        $words    = preg_split('/[^a-z]+/', mb_strtolower($description)) ?: [];
+        $accepted = self::PREPARATION_WORDS[$this->preparation] ?? [];
+
+        foreach ($accepted as $wanted) {
+            if (in_array($wanted, $words, true)) {
+                return true;
+            }
+        }
+
+        foreach (self::METHOD_WORDS as $method) {
+            if (in_array($method, $words, true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** Set once per instance; the answer cannot change mid-request. */
@@ -1113,6 +1214,27 @@ class UsdaFoodData
         'fried'   => ['fried'],
         'baked'   => ['baked', 'roasted', 'cooked'],
         'grilled' => ['grilled', 'broiled', 'roasted', 'cooked'],
+    ];
+
+    /**
+     * Words that name HOW a food was cooked, for spotting a clash.
+     *
+     * Used only by matchesPreparation(), and only when the member or the model
+     * named a specific method and the description confirms none of it:
+     * hard-boiled is not fried, poached is not grilled.
+     *
+     * Deliberately shorter than it could be. "Toasted", "dried" and "smoked"
+     * are left out although they are processing words, because they attach to
+     * foods where nobody states a competing method — bread is toasted, egg
+     * white is dried — and including them turned the preferred entry for
+     * wholemeal toast into a contradiction of itself.
+     *
+     * @var list<string>
+     */
+    private const METHOD_WORDS = [
+        'raw', 'uncooked',
+        'boiled', 'fried', 'baked', 'roasted', 'broiled', 'grilled',
+        'poached', 'scrambled', 'steamed', 'braised', 'stewed',
     ];
 
     /**

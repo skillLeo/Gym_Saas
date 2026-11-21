@@ -337,6 +337,102 @@ class LocalUsdaSearchTest extends TestCase
         $this->assertSame('Bananas, raw', $this->usda()->search('banana', 3, null, 'raw')[0]['name']);
     }
 
+    /**
+     * The fried egg from the Phase 11 browser run.
+     *
+     * A photograph of a full English breakfast. The model read the egg
+     * correctly — label "Fried egg", preparation "fried" — and the review
+     * screen offered "Egg, whole, cooked, hard-boiled", 155 kcal where the
+     * fried entry says 196. The fried entry was in the list, second.
+     *
+     * `egg` in config/food_preferred.php points at the hard-boiled row, and
+     * that bonus is +100. It was being applied because the hard-boiled
+     * description says nothing about frying, which counted as agreement.
+     */
+    public function test_a_preferred_food_cannot_override_a_differently_cooked_one(): void
+    {
+        config(['food_preferred' => ['egg' => 1]]);
+
+        $this->localFood(1, 'Egg, whole, cooked, hard-boiled', 155);
+        $this->localFood(2, 'Egg, whole, cooked, fried', 196);
+
+        $this->assertSame(
+            'Egg, whole, cooked, fried',
+            $this->usda()->search('egg', 3, null, 'fried')[0]['name'],
+            'the preferred hard-boiled entry was forced over an entry that says fried',
+        );
+
+        // ...and the preferred entry still wins everywhere it is not contradicted.
+        Cache::flush();
+        $this->assertSame(
+            'Egg, whole, cooked, hard-boiled',
+            $this->usda()->search('egg', 3, null, 'boiled')[0]['name'],
+        );
+
+        Cache::flush();
+        $this->assertSame(
+            'Egg, whole, cooked, hard-boiled',
+            $this->usda()->search('egg', 3, null, 'cooked')[0]['name'],
+            '"cooked" is the photo default and must keep accepting any method',
+        );
+    }
+
+    public function test_a_preferred_food_naming_several_methods_still_counts(): void
+    {
+        /*
+         * "Pork, cured, bacon, cooked, broiled, pan-fried or roasted" names
+         * three methods at once. An earlier attempt at the rule above rejected
+         * it for fried bacon over the word "broiled" in its own name, and
+         * answered "Bacon, turkey, unprepared" instead — 226 kcal against 541.
+         */
+        config(['food_preferred' => ['bacon' => 1]]);
+
+        $this->localFood(1, 'Pork, cured, bacon, cooked, broiled, pan-fried or roasted', 541);
+        $this->localFood(2, 'Bacon, turkey, unprepared', 226);
+
+        $this->assertSame(
+            'Pork, cured, bacon, cooked, broiled, pan-fried or roasted',
+            $this->usda()->search('bacon', 3, null, 'fried')[0]['name'],
+        );
+    }
+
+    public function test_a_method_named_in_the_query_sharpens_a_generic_cooked(): void
+    {
+        /*
+         * The model is told to answer "cooked" for anything on a plate when it
+         * cannot tell how, and often does that while naming the dish exactly:
+         * label "fried egg", preparation "cooked". The label is the better
+         * evidence of the two.
+         */
+        config(['food_preferred' => ['egg' => 1]]);
+
+        $this->localFood(1, 'Egg, whole, cooked, hard-boiled', 155);
+        $this->localFood(2, 'Egg, whole, cooked, fried', 196);
+
+        $this->assertSame(
+            'Egg, whole, cooked, fried',
+            $this->usda()->search('fried egg', 3, 'egg', 'cooked')[0]['name'],
+        );
+    }
+
+    public function test_the_manual_search_box_is_not_narrowed_by_the_words_typed(): void
+    {
+        /*
+         * Sharpening applies only over a stated "cooked", never over null.
+         * Null is the manual search box, which asks a different question:
+         * someone typing "fried egg" into a search field is looking at every
+         * egg, and narrowing their search from under them is not our business.
+         */
+        config(['food_preferred' => ['egg' => 1]]);
+
+        $this->localFood(1, 'Egg, whole, cooked, hard-boiled', 155);
+        $this->localFood(2, 'Egg, whole, cooked, fried', 196);
+
+        $out = $this->usda()->search('fried egg', 3, 'egg', null);
+
+        $this->assertCount(2, $out, 'the manual search dropped one of the eggs');
+    }
+
     public function test_a_preferred_id_that_is_not_imported_is_ignored(): void
     {
         // An id for a food this install has not got must not blank the result.
