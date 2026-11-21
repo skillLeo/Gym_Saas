@@ -121,6 +121,18 @@ return [
     'raisins'          => 168166,   // Raisins, seeded  (296 kcal)
     'raspberries'      => 167755,   // Raspberries, raw  (52 kcal)
     'rice'             => 168878,   // Rice, white, long-grain, regular, enriched, cooked  (130 kcal)
+
+    /*
+     * Preparation-qualified entries, written "<food>:<preparation>".
+     *
+     * Where raw and cooked are genuinely different foods to a member, one key
+     * cannot say both: rice is 365 kcal dry and 130 cooked. Without these the
+     * raw case fell through to ranking and answered "Rice, black, unenriched,
+     * raw" — the right calories by luck, the wrong grain. The plain key above
+     * still covers every other case.
+     */
+    'rice:raw'         => 168877,   // Rice, white, long-grain, regular, raw, enriched  (365 kcal)
+    'white rice:raw'   => 168877,   // Rice, white, long-grain, regular, raw, enriched  (365 kcal)
     'salmon'           => 175168,   // Fish, salmon, Atlantic, farmed, cooked, dry heat  (206 kcal)
     'sausage'          => 174579,   // Sausage, pork and beef, fresh, cooked  (396 kcal)
     'shrimp'           => 175180,   // Crustaceans, shrimp, cooked  (99 kcal)

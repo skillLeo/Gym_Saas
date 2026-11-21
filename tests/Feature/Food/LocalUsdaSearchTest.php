@@ -300,6 +300,43 @@ class LocalUsdaSearchTest extends TestCase
         $this->assertFalse($longer[0]['preferred'] ?? false);
     }
 
+    public function test_a_preparation_qualified_preferred_entry_wins(): void
+    {
+        /*
+         * Regression test. "Rice" means cooked rice to someone logging dinner
+         * and dry rice to someone weighing it out — 130 kcal against 365. One
+         * key cannot say both, so the raw case used to fall through to
+         * ranking and answer "Rice, black, unenriched, raw": roughly the
+         * right calories by luck, the wrong grain.
+         */
+        config(['food_preferred' => ['rice' => 1, 'rice:raw' => 2]]);
+
+        $this->localFood(1, 'Rice, white, long-grain, enriched, cooked', 130);
+        $this->localFood(2, 'Rice, white, long-grain, raw, enriched', 365);
+        $this->localFood(3, 'Rice, black, unenriched, raw', 361);
+
+        $this->assertSame('Rice, white, long-grain, raw, enriched', $this->usda()->search('rice', 3, null, 'raw')[0]['name']);
+
+        Cache::flush();
+        $this->assertSame('Rice, white, long-grain, enriched, cooked', $this->usda()->search('rice', 3, null, 'cooked')[0]['name']);
+
+        // No preparation at all still uses the plain entry.
+        Cache::flush();
+        $this->assertSame('Rice, white, long-grain, enriched, cooked', $this->usda()->search('rice', 3)[0]['name']);
+    }
+
+    public function test_an_unqualified_entry_is_used_when_no_qualified_one_exists(): void
+    {
+        // Only a handful of foods need the ":raw" form; the rest must keep
+        // working off the plain key whatever preparation is stated.
+        config(['food_preferred' => ['banana' => 1]]);
+
+        $this->localFood(1, 'Bananas, raw', 89);
+        $this->localFood(2, 'Banana chips', 519);
+
+        $this->assertSame('Bananas, raw', $this->usda()->search('banana', 3, null, 'raw')[0]['name']);
+    }
+
     public function test_a_preferred_id_that_is_not_imported_is_ignored(): void
     {
         // An id for a food this install has not got must not blank the result.
