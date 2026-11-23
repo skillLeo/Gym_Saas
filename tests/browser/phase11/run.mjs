@@ -653,6 +653,13 @@ for (const locale of ['es', 'fr']) {
     record(`lang-${locale}`, 'the chooser is not left in English',
       body.includes(en('aiFood.choose.analyseText')) && locale !== 'en' ? 'FAIL' : 'PASS');
 
+    if (!(await present(page.locator('#ai-food-text')))) {
+      record(`lang-${locale}`, 'the chooser offers a text box', 'FAIL', 'no #ai-food-text');
+      await shot(page, `lang-${locale}`, 'no-text-box');
+      await page.context().close();
+      return;
+    }
+
     await typeInto(page, page.locator('#ai-food-text'), locale === 'es' ? 'dos huevos y pan tostado' : 'deux oeufs et du pain grillé');
     await wait(400);
     await mouseClick(page, page.locator(`button:has-text("${t('aiFood.choose.analyseText')}")`).first());

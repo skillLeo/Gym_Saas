@@ -1020,8 +1020,28 @@ class UsdaFoodData
             foreach ($batch as $key) {
                 $res = $responses[$key] ?? null;
 
-                if ($res instanceof \Illuminate\Http\Client\Response
-                    && ! $res->successful()
+                /*
+                 * A TIMEOUT IS A FAILURE TOO, and it was the one failure that
+                 * never got its second chance.
+                 *
+                 * Http::pool puts a thrown ConnectionException in the slot
+                 * where a Response would be, so the `instanceof Response`
+                 * guard below quietly excluded every timed-out lookup from the
+                 * retry set. That is the failure this path is most likely to
+                 * see — FoodData Central is a shared public service and six
+                 * seconds is not generous — and it is the one a retry is most
+                 * likely to fix. The documented behaviour, 6s then 2s, held
+                 * for a spurious 400 and not for the common case; a slow
+                 * lookup simply came back "we could not reach the food
+                 * database" after six seconds, having tried once.
+                 */
+                if (! $res instanceof \Illuminate\Http\Client\Response) {
+                    $retry[] = $key;
+
+                    continue;
+                }
+
+                if (! $res->successful()
                     && $res->status() !== 429
                     && ! $res->serverError()) {
                     $retry[] = $key;

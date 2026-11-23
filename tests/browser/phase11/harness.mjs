@@ -154,12 +154,32 @@ export async function signIn(page, email, password) {
  */
 export async function setLanguage(page, code) {
   await page.goto(`${APP}/settings`, { waitUntil: 'domcontentloaded' });
-  await wait(5000);
   const btn = page.locator(`button[lang="${code}"]`);
-  if ((await btn.count()) === 0) return false;
+  if (!(await present(btn))) return false;
+
   await mouseClick(page, btn);
-  await wait(2500);
-  return true;
+
+  /*
+   * Wait for the change to have STUCK, not merely to have been clicked.
+   *
+   * Choosing a language sets the store and then PUTs /auth/user; if that
+   * request fails the handler puts the old language back. Navigating away
+   * while it is in flight aborts it, which is a failure — so a fixed sleep
+   * raced the save and sometimes left the next page in English, reported as
+   * "the AI entry point is not translated" about a page that was never
+   * switched.
+   */
+  const until = Date.now() + 25000;
+  while (Date.now() < until) {
+    const lang = await page.evaluate(() => document.documentElement.lang).catch(() => '');
+    const pressed = await btn.getAttribute('aria-pressed').catch(() => null);
+    if (lang === code && pressed === 'true') {
+      await wait(1200); // let the PUT finish; aborting it reverts the choice
+      return true;
+    }
+    await wait(400);
+  }
+  return false;
 }
 
 /** The AI consent toggle in Settings, found by its accessible name. */

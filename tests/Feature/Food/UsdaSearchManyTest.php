@@ -164,6 +164,48 @@ class UsdaSearchManyTest extends TestCase
         $this->assertNotEmpty($this->usda()->searchMany(['apple'])['apple']);
     }
 
+    public function test_a_timed_out_label_is_tried_again(): void
+    {
+        /*
+         * The failure this path actually sees. FoodData Central is a shared
+         * public service and the first attempt allows six seconds, so a slow
+         * answer is far more likely than the spurious 400 the retry was
+         * written for.
+         *
+         * Http::pool puts a thrown ConnectionException in the slot where a
+         * Response would be, and the retry filter tested `instanceof
+         * Response` first — so every timed-out lookup was quietly excluded
+         * from the one retry it was documented to get, and came back "we
+         * could not reach the food database" after a single try.
+         */
+        Http::fake(['*api.nal.usda.gov*' => Http::sequence()
+            ->pushFailedConnection()
+            ->push(['foods' => [$this->food('Apples, raw')]]),
+        ]);
+
+        $usda = $this->usda();
+        $out  = $usda->searchMany(['apple']);
+
+        $this->assertNotEmpty($out['apple'], 'a timed-out lookup was never retried');
+        $this->assertSame('Apples, raw', $out['apple'][0]['name']);
+    }
+
+    public function test_a_label_that_times_out_twice_is_reported_as_unreachable(): void
+    {
+        // The retry is one retry, not a loop, and a genuine outage must still
+        // reach the member as "we could not look that up".
+        Http::fake(['*api.nal.usda.gov*' => Http::sequence()
+            ->pushFailedConnection()
+            ->pushFailedConnection(),
+        ]);
+
+        $usda = $this->usda();
+        $out  = $usda->searchMany(['apple']);
+
+        $this->assertSame([], $out['apple']);
+        $this->assertTrue($usda->unavailable);
+    }
+
     public function test_one_failing_label_does_not_lose_the_others(): void
     {
         Http::fake([
