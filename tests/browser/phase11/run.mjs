@@ -785,9 +785,17 @@ for (const locale of ['es', 'fr']) {
         reviewBody.includes(en('aiFood.review.save')) ? 'FAIL' : 'PASS');
     }
 
-    // Leave the account in English, so the next group — and the next person to
-    // open this browser — does not inherit a language they did not choose.
-    await setLanguage(page, 'en');
+    /*
+     * Leave the account in English, so the next group — and the next person to
+     * open this browser — does not inherit a language they did not choose.
+     *
+     * Asserted, not assumed. The first version ignored the return value, the
+     * restore quietly failed, and the following group then reported "the AI
+     * entry point is missing" about an entry point that was sitting there in
+     * French.
+     */
+    record(`lang-${locale}`, 'the account is left in English afterwards',
+      (await setLanguage(page, 'en')) ? 'PASS' : 'FAIL');
 
     await page.context().close();
   });
@@ -1044,6 +1052,35 @@ group('failure-ui', async (b) => {
 /* ------------------------------------------------------------------- run */
 
 const wanted = process.argv.slice(2);
+
+/*
+ * EVERY GROUP BUT THE LANGUAGE ONES ASSERTS AGAINST ENGLISH, so the account
+ * has to start in English.
+ *
+ * It is set here rather than trusted, because a language group that fails
+ * part way through leaves the account in whatever language it had reached —
+ * and the next group then reports "the AI entry point is missing" about an
+ * entry point that is sitting there in French. A whole run was lost to that.
+ */
+await (async () => {
+  const PHP = 'php';
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  try {
+    const { stdout } = await promisify(execFile)(PHP, ['-r', `
+      require 'vendor/autoload.php';
+      $app = require 'bootstrap/app.php';
+      $app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
+      $u = App\\Models\\User::where('email', 'member@myextremetrainer.com')->first();
+      if ($u && $u->locale !== 'en') { $u->locale = 'en'; $u->save(); echo "reset to en\\n"; }
+      else { echo "already en\\n"; }
+    `], { timeout: 60000 });
+    console.log('  member language:', stdout.trim());
+  } catch (e) {
+    console.log('  member language: could not reset —', e.message.split('\n')[0].slice(0, 90));
+  }
+})();
+
 const b = await browser();
 try {
   for (const [name, fn] of Object.entries(groups)) {

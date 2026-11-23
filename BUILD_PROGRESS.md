@@ -3429,12 +3429,50 @@ different failure states and asserts they all still work.
   new entry. The old Photo Log takes a photo for show and then asks the member
   to type a description — it never looks at the image.
 
+## The review and test pass — 23 November 2026
+
+Three independent reviewers who had not seen the code were given narrow jobs
+(security and privacy, correctness, deploy-readiness), and the whole feature
+was then driven in a real browser with real mouse and keyboard events at
+1440×900 and 390×844, in English, Spanish and French, as member, admin and
+physician. Full report: `deliverables/test-reports/phase-11/REPORT.md`.
+
+**The serious one.** `/ai/food-log/confirm` took a whole food object from the
+browser and wrote it into a SHARED `food_items` row, so one member's claimed
+calorie figure became every later member's figure for that real food. Closed:
+a food we can identify is written from our own copy, an unverifiable one
+becomes the member's own record, and `calories` can no longer travel from one
+journal into another. `AiConfirmTrustTest` pins it.
+
+**Also fixed:** the audio length cap capped only the estimate, not the call; a
+forged WAV header could bill a long clip as one second; a read timeout was
+retried as though nothing had been sent, taking 91 seconds for a browser that
+gave up at 60; a monthly cap of zero (which means NO cap) was displayed as
+"$0.00 left"; a failed save threw away every correction the member had made; a
+custom food could not be added to a reviewed meal at all; "the food database
+could not be reached" appeared above a screen of successful matches; "Not sure
+about this one" never went away after the member fixed it; an empty voice
+recording did nothing whatsoever; a fried egg matched the hard-boiled entry; a
+timed-out food lookup never got the retry it was documented to get; the AI
+gate could be called past by omitting an optional argument; and the food
+journal's date arrows had no accessible name.
+
+**Deploy blocker found and closed.** The two Phase 11 migrations had no
+phpMyAdmin path, and the test host has no SSH — so on the one server this is
+going to, there was no way to create `ai_usage_logs` or the three `ai_*`
+columns. `deliverables/ai/ai_phase11_schema.sql` is that path, proven by
+migrating a fresh database, dropping the three migrations to imitate a server
+that never ran them, importing through the database, and confirming
+`php artisan migrate` then answers *Nothing to migrate*.
+
 ## Not verified
 
-- **A real voice recording of human speech.** The transcription path is
-  exercised end to end and bills correctly, but every clip sent was generated
-  audio, so "two eggs and toast" has never actually been spoken into it. Needs
-  a person with a microphone.
-- **Anything against a real USDA key.** Local development ran on the shared
-  `DEMO_KEY` throughout, whose hourly quota is roughly four photos' worth.
+- **A real voice recording of human speech.** Five different recordings now go
+  through the browser end to end — an ordinary sentence, spoken weights, brand
+  names, speech with no food in it, and silence — but every one was generated
+  by a text-to-speech voice. A person with an accent, in a noisy kitchen, is
+  still untested.
+- **The camera.** Ten real food photographs went through Snap, all chosen from
+  a file. "Take photo" asks the phone for its camera directly, which cannot be
+  driven from a desktop browser.
 - **Nothing was deployed.** Entirely localhost.
