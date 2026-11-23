@@ -105,10 +105,43 @@ export async function mouseClick(page, locator, { timeout = 15000 } = {}) {
   const el = locator.first();
   await el.waitFor({ state: 'visible', timeout });
   await el.scrollIntoViewIfNeeded();
-  await wait(150);
 
-  const box = await el.boundingBox();
-  if (!box) throw new Error('element has no box on screen');
+  /*
+   * MEASURE, THEN CHECK THE POINT STILL BELONGS TO THIS ELEMENT.
+   *
+   * A coordinate goes stale the moment anything moves, and a stale coordinate
+   * does not miss — it hits whatever is there now. The language switcher
+   * caught this: its buttons carry a label that only appears at the `sm`
+   * breakpoint, so the row widens once styles settle, and a centre measured a
+   * fraction earlier landed on the NEXT button. Choosing Spanish set the
+   * interface to French, and the scenario then reported "the AI entry point is
+   * not translated" about a page that had been switched to the wrong language.
+   *
+   * elementFromPoint is the only way to know. Re-measure until the point we
+   * are about to press really is inside the element we were asked to click.
+   */
+  const handle = await el.elementHandle();
+  let box = null;
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await wait(attempt === 0 ? 150 : 350);
+
+    box = await el.boundingBox();
+    if (!box) continue;
+
+    const onTarget = await page.evaluate(
+      ([node, x, y]) => {
+        const at = document.elementFromPoint(x, y);
+        return !!at && (at === node || node.contains(at) || at.contains(node));
+      },
+      [handle, box.x + box.width / 2, box.y + box.height / 2],
+    );
+
+    if (onTarget) break;
+    box = null;
+  }
+
+  if (!box) throw new Error('could not get a stable point on the element to click');
 
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 6 });
   await wait(60);
