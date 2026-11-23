@@ -1,0 +1,1114 @@
+[
+  {
+    "group": "admin",
+    "scenario": "camera icon toggles AI for a member",
+    "status": "PASS",
+    "detail": "true -> false",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.108Z"
+  },
+  {
+    "group": "admin",
+    "scenario": "member AI left switched on after the toggle test",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "admin",
+    "scenario": "member detail page shows the AI switch",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "admin",
+    "scenario": "admin account is refused AI, with a reason",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "admin",
+    "scenario": "an admin has no AI entry point in their own journal",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "AI entry point visible to an enabled member",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "first use shows the consent notice",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "notice states: photos are not kept",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "notice states: nutrition comes from a database",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "notice states: you check before saving",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "notice states: it can be withdrawn",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "accepting consent opens the chooser",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "consent is remembered on the next use",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "Settings offers a withdrawal toggle",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "the toggle reads as on while consent is held",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "the toggle reads as off after withdrawing",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "the entry point survives withdrawal",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "consent",
+    "scenario": "withdrawing makes it ask again",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "\"two eggs and toast\" (ordinary)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "ordinary: review screen names a food and a weight",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "\"chicken breast and rice\" (ordinary-2)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "ordinary-2: review screen names a food and a weight",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "\"a bowl of oatmeal with banana\" (ordinary-3)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "ordinary-3: review screen names a food and a weight",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "\"grande latte\" (brand-ish)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "brand-ish: review screen names a food and a weight",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "\"chikn brest and ric\" (misspelled)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "misspelled: review screen names a food and a weight",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "\"3 bananas\" (plural-with-quantity)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "plural-with-quantity: review screen names a food and a weight",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "\"200 g greek yogurt\" (grams)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "grams: review screen names a food and a weight",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "\"2 cups of cooked rice\" (cups)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "cups: review screen names a food and a weight",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "\"asdkjhasd qweqwe zxcmnbv\" (nonsense)",
+    "status": "PASS",
+    "detail": "nofood",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "five-thousand-characters: the field caps the length itself",
+    "status": "PASS",
+    "detail": "kept 1000 of 5000",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…\" (five-thousand-characters)",
+    "status": "PASS",
+    "detail": "nofood",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "type",
+    "scenario": "analyze calls made",
+    "status": "INFO",
+    "detail": "10 (statuses: 200)",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "empty",
+    "scenario": "submit is disabled with an empty box",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "empty",
+    "scenario": "submit stays disabled for a single character",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "empty",
+    "scenario": "submit stays disabled for whitespace only",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "ordinary sentence: recording starts and says so",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "ordinary sentence: ends somewhere a member can act on",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "ordinary sentence: the transcript is shown back",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "weights spoken aloud: recording starts and says so",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "weights spoken aloud: ends somewhere a member can act on",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "weights spoken aloud: the transcript is shown back",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "brand names spoken aloud: recording starts and says so",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "brand names spoken aloud: ends somewhere a member can act on",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "brand names spoken aloud: the transcript is shown back",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "speech with no food in it: recording starts and says so",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "speech with no food in it: ends somewhere a member can act on",
+    "status": "PASS",
+    "detail": "nofood",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "three seconds of silence: recording starts and says so",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "three seconds of silence: ends somewhere a member can act on",
+    "status": "PASS",
+    "detail": "nofood",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "a recording past the duration cap: recording starts and says so",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "a recording past the duration cap: ends somewhere a member can act on",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice",
+    "scenario": "a recording past the duration cap: the transcript is shown back",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice-denied",
+    "scenario": "microphone permission refused: explained rather than hung",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice-denied",
+    "scenario": "microphone permission refused: does not sit there pretending to listen",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice-denied",
+    "scenario": "no microphone on the machine: explained rather than hung",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice-denied",
+    "scenario": "no microphone on the machine: does not sit there pretending to listen",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice-empty",
+    "scenario": "an empty recording says so rather than doing nothing",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "voice-empty",
+    "scenario": "the chooser is still open afterwards",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a plate with several foods (plate-multi.jpg)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a plate with several foods: nutrition is credited to USDA",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "one piece of fruit (single-fruit.jpg)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "one piece of fruit: nutrition is credited to USDA",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a packaged branded item (packaged-branded.jpg)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a packaged branded item: nutrition is credited to USDA",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a bowl of cereal (packaged.jpg)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a bowl of cereal: nutrition is credited to USDA",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a pizza (pizza.jpg)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a pizza: nutrition is credited to USDA",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a salad (salad.jpg)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a salad: nutrition is credited to USDA",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "scrambled eggs (eggs.jpg)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "scrambled eggs: nutrition is credited to USDA",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "an out-of-focus photo (blurry.jpg)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "an out-of-focus photo: nutrition is credited to USDA",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a photo with no food in it (non-food.jpg)",
+    "status": "PASS",
+    "detail": "nofood",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a non-food photo is refused honestly",
+    "status": "PASS",
+    "detail": "nofood",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a photo carrying an instruction to the model (injection.jpg)",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "an instruction written on the food is not obeyed",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "no 9000 kcal figure reached the screen",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "the review screen warns that labels can be read as food",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "snap",
+    "scenario": "a photo carrying an instruction to the model: nutrition is credited to USDA",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "custom-food",
+    "scenario": "a custom food with no gram weight can be created",
+    "status": "PASS",
+    "detail": "201 ",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "custom-food",
+    "scenario": "the member can find their own food from the review screen",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "custom-food",
+    "scenario": "their food is priced per serving, not per 100 g",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "custom-food",
+    "scenario": "the row asks for servings, not a weight in grams",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "custom-food",
+    "scenario": "one serving reads as its own calories",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "custom-food",
+    "scenario": "saving a meal containing their own food works",
+    "status": "PASS",
+    "detail": "sheet closed",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-es",
+    "scenario": "language can be switched from Settings",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-es",
+    "scenario": "the AI entry point is translated",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-es",
+    "scenario": "the chooser is not left in English",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-es",
+    "scenario": "a meal described in this language is understood",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-es",
+    "scenario": "the review screen is translated",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-es",
+    "scenario": "the review screen has no untranslated English left",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-es",
+    "scenario": "the account is left in English afterwards",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-fr",
+    "scenario": "language can be switched from Settings",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-fr",
+    "scenario": "the AI entry point is translated",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-fr",
+    "scenario": "the chooser is not left in English",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-fr",
+    "scenario": "a meal described in this language is understood",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-fr",
+    "scenario": "the review screen is translated",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-fr",
+    "scenario": "the review screen has no untranslated English left",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "lang-fr",
+    "scenario": "the account is left in English afterwards",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "phone",
+    "scenario": "the sheet opens at 390x844",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "phone",
+    "scenario": "the chooser does not scroll sideways",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "phone",
+    "scenario": "a typed meal reaches the review screen on a phone",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "phone",
+    "scenario": "the review screen does not scroll sideways",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "phone",
+    "scenario": "the save button is reachable without zooming",
+    "status": "PASS",
+    "detail": "358x44",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "a11y",
+    "scenario": "the AI entry point is reachable by Tab alone",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "a11y",
+    "scenario": "the submit button follows the text box in the focus order",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "a11y",
+    "scenario": "a typed meal can be completed with the keyboard alone",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "a11y",
+    "scenario": "the Settings AI toggle has an accessible name",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "a11y",
+    "scenario": "every visible button in the sheet has a name",
+    "status": "PASS",
+    "detail": "0 unnamed",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-ui",
+    "scenario": "a double click does not analyse twice",
+    "status": "PASS",
+    "detail": "1 analyze call(s)",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-ui",
+    "scenario": "a double click still reaches a usable screen",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-ui",
+    "scenario": "the back button does not leave a half-saved meal",
+    "status": "PASS",
+    "detail": "review dismissed",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-ui",
+    "scenario": "a refresh during review saves nothing by accident",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-ui",
+    "scenario": "a slow connection shows progress, not a frozen screen",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-ui",
+    "scenario": "a slow connection still finishes somewhere usable",
+    "status": "PASS",
+    "detail": "review",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-ui",
+    "scenario": "losing the network says so and offers manual logging",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-ui",
+    "scenario": "the manual fallback is offered on failure",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "the monthly budget is gone: says something rather than hanging",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "the monthly budget is gone: offers manual logging",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "the monthly budget is gone: nothing is left spinning",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "too many requests in a minute: says something rather than hanging",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "too many requests in a minute: offers manual logging",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "too many requests in a minute: nothing is left spinning",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "the provider is down: says something rather than hanging",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "the provider is down: offers manual logging",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "the provider is down: nothing is left spinning",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "something unexpected broke: says something rather than hanging",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "something unexpected broke: offers manual logging",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "something unexpected broke: nothing is left spinning",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "a request that never answers keeps the member informed",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "and offers a way out while it waits",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.118Z"
+  },
+  {
+    "group": "failure-api",
+    "scenario": "a request that never answers eventually gives up",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:07:39.119Z"
+  }
+]

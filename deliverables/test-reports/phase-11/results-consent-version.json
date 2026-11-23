@@ -1,0 +1,10 @@
+[
+  {
+    "group": "consent-version",
+    "scenario": "a consent version bump re-asks a member who already agreed",
+    "status": "PASS",
+    "detail": "",
+    "revision": "a660e71+dirty",
+    "at": "2026-11-23T12:09:10.037Z"
+  }
+]
