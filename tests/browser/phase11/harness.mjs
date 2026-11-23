@@ -22,6 +22,7 @@
 
 import { chromium } from '../../../frontend/node_modules/playwright/index.mjs';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
 export const APP = 'http://localhost:3000';
@@ -207,11 +208,29 @@ export async function setLanguage(page, code) {
    * translated" about a page that had been quietly reverted. Watching for the
    * response removes the race rather than making it less likely.
    */
-  const already = async () =>
-    (await page.evaluate(() => document.documentElement.lang).catch(() => '')) === code &&
-    (await btn.getAttribute('aria-pressed').catch(() => null)) === 'true';
+  /*
+   * Only this button pressed, and the page actually in that language.
+   *
+   * Reading `documentElement.lang` alone is not enough, and neither is
+   * reading the pressed state alone. Next.js renders `<html lang="en">` on the
+   * server and the store sets the real one after hydration, so for a moment
+   * EVERY page looks like English with the English button selected. A version
+   * of this short-circuited on that, reported "the account is left in English
+   * afterwards" about an account that was still French, and every group that
+   * followed then failed with "the AI entry point is missing" — four groups
+   * and forty minutes of a clean run.
+   */
+  const inLanguage = async () => {
+    const pressed = await page
+      .evaluate(() => [...document.querySelectorAll('button[lang]')]
+        .map((e) => `${e.lang}:${e.getAttribute('aria-pressed')}`))
+      .catch(() => []);
 
-  if (await already()) return true;
+    return pressed.length > 1
+      && pressed.includes(`${code}:true`)
+      && pressed.filter((p) => p.endsWith(':true')).length === 1
+      && (await page.evaluate(() => document.documentElement.lang).catch(() => '')) === code;
+  };
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const saved = page
@@ -229,7 +248,7 @@ export async function setLanguage(page, code) {
     // ...and then for the interface to actually be in it.
     const until = Date.now() + 12000;
     while (Date.now() < until) {
-      if (await already()) return true;
+      if (await inLanguage()) return true;
       await wait(300);
     }
 
@@ -308,18 +327,25 @@ export async function choosePhoto(page, t, filePath) {
 /**
  * Wait for the sheet to leave the loading step, and say where it landed.
  *
- * @returns 'review' | 'nofood' | 'error' | 'loading'
+ * `chooser` is distinct from `loading` on purpose. They were one answer once,
+ * and a scenario whose click had missed the submit button entirely then
+ * reported a perfectly healthy chooser as a screen stuck on a spinner.
+ *
+ * @returns 'review' | 'nofood' | 'error' | 'chooser' | 'loading'
  */
 export async function settled(page, t, timeout = 75000) {
   const until = Date.now() + timeout;
+  let body = '';
+
   while (Date.now() < until) {
-    const body = await page.locator('body').innerText().catch(() => '');
+    body = await page.locator('body').innerText().catch(() => '');
     if (body.includes(t('aiFood.review.noFoodTitle'))) return 'nofood';
     if (body.includes(t('aiFood.review.title'))) return 'review';
     if (body.includes(t('aiFood.error.title'))) return 'error';
     await wait(1500);
   }
-  return 'loading';
+
+  return body.includes(t('aiFood.loading.working')) ? 'loading' : 'chooser';
 }
 
 export async function shot(page, group, name) {
@@ -331,7 +357,25 @@ export async function shot(page, group, name) {
 
 export function writeResults(file = 'results.json') {
   const dir = outDir();
-  writeFileSync(join(dir, file), JSON.stringify(results, null, 2));
+
+  /*
+   * Stamp the commit every row was produced against.
+   *
+   * A report assembled from several runs can otherwise quote a pass from one
+   * afternoon beside a failure from another, with nothing to say which build
+   * either belonged to. summarise.mjs refuses to merge files whose stamps
+   * differ, which makes that mistake loud instead of invisible.
+   */
+  let revision = 'unknown';
+  try {
+    revision = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
+    const dirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim();
+    if (dirty) revision += '+dirty';
+  } catch { /* not a git checkout; leave it unknown */ }
+
+  const stamped = results.map((r) => ({ ...r, revision, at: new Date().toISOString() }));
+
+  writeFileSync(join(dir, file), JSON.stringify(stamped, null, 2));
   const pass = results.filter((r) => r.status === 'PASS').length;
   const fail = results.filter((r) => r.status === 'FAIL').length;
   const other = results.length - pass - fail;

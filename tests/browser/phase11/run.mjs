@@ -942,20 +942,30 @@ group('failure-ui', async (b) => {
     });
     await typeInto(page, page.locator('#ai-food-text'), 'two eggs and toast');
     await wait(400);
+
+    /*
+     * The first press goes through mouseClick, which scrolls the button into
+     * view and checks the point belongs to it. The second is a raw press at
+     * the same coordinates a fraction later — which is what a double click
+     * is, and what a stale coordinate does.
+     *
+     * The first version pressed raw coordinates twice without scrolling, hit
+     * nothing at all, and then reported the resulting untouched chooser as a
+     * stuck screen.
+     */
     const submit = page.locator(`button:has-text("${t('aiFood.choose.analyseText')}")`).first();
-    const box = await submit.boundingBox();
-    // two real clicks as fast as a hand can manage
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down(); await page.mouse.up();
+    const box = await mouseClick(page, submit);
     await wait(120);
-    await page.mouse.down(); await page.mouse.up();
+    await page.mouse.down();
+    await page.mouse.up();
 
     const where = await settled(page, t);
     record('failure-ui', 'a double click does not analyse twice',
-      calls.length <= 1 ? 'PASS' : 'FAIL', `${calls.length} analyze call(s)`);
+      calls.length === 1 ? 'PASS' : 'FAIL', `${calls.length} analyze call(s)`);
     record('failure-ui', 'a double click still reaches a usable screen',
-      where === 'loading' ? 'FAIL' : 'PASS', where);
+      where === 'review' || where === 'nofood' ? 'PASS' : 'FAIL', where);
     await shot(page, 'failure-ui', 'double-submit');
+    void box;
   }
 
   /* ---- browser back, mid review ---- */
@@ -1049,43 +1059,146 @@ group('failure-ui', async (b) => {
   await page.context().close();
 });
 
+/* ------------------------------------------------- provider failures, in the UI */
+
+/**
+ * What the member sees when the AI call fails.
+ *
+ * The failures are injected at OUR API's edge rather than OpenAI's. The
+ * mapping from a provider 429/500/timeout to our own status and code is
+ * covered exhaustively by the backend suite with Http::fake — AiClientTest and
+ * AiFailureIsContainedTest — and repeating it here would prove the same thing
+ * twice. What those tests cannot show is what is on the screen afterwards,
+ * which is this.
+ *
+ * Every one of them has to end somewhere the member can act: a message that
+ * says what happened, and a way to log the meal by hand.
+ */
+const API_FAILURES = [
+  ['the monthly budget is gone', 429, { success: false, code: 'ai_limit_reached', reason: 'cap_reached',
+    error: 'Photo, voice and text logging has reached its monthly budget and will switch back on next month. Manual logging is unaffected — you can add this meal by hand.',
+    fallback: 'manual' }],
+  ['too many requests in a minute', 429, { success: false, code: 'ai_limit_reached', reason: 'rate_limit',
+    error: 'That was a lot of requests at once. Please wait a moment and try again.', fallback: 'manual' }],
+  ['the provider is down', 503, { success: false, code: 'ai_unavailable',
+    error: 'Photo and voice logging is unavailable right now. You can still add this meal by hand.', fallback: 'manual' }],
+  ['something unexpected broke', 500, { success: false, error: 'Server error' }],
+];
+
+group('failure-api', async (b) => {
+  const t = strings('en');
+
+  for (const [label, status, body] of API_FAILURES) {
+    const ctx = await context(b, 'desktop');
+    const page = await ctx.newPage();
+    await signIn(page, ACCOUNTS.member, PASSWORD);
+
+    if ((await openAiSheet(page, t)) === 'absent') {
+      record('failure-api', label, 'BLOCKED', 'entry point missing');
+      await ctx.close();
+      continue;
+    }
+
+    await page.route('**/ai/food-log/analyze', (route) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }));
+
+    await typeInto(page, page.locator('#ai-food-text'), 'two eggs and toast');
+    await wait(400);
+    await mouseClick(page, page.locator(`button:has-text("${t('aiFood.choose.analyseText')}")`).first());
+    await wait(7000);
+
+    const text = await page.locator('body').innerText();
+    record('failure-api', `${label}: says something rather than hanging`,
+      text.includes(t('aiFood.error.title')) || text.includes(body.error ?? '\u0000') ? 'PASS' : 'FAIL');
+    record('failure-api', `${label}: offers manual logging`,
+      text.includes(t('aiFood.error.logManually')) ? 'PASS' : 'FAIL');
+    record('failure-api', `${label}: nothing is left spinning`,
+      text.includes(t('aiFood.loading.working')) ? 'FAIL' : 'PASS');
+    await shot(page, 'failure-api', label.replace(/[^a-z0-9]+/gi, '-'));
+
+    await ctx.close();
+  }
+
+  /* ---- the request that never answers ---- */
+  {
+    const ctx = await context(b, 'desktop');
+    const page = await ctx.newPage();
+    await signIn(page, ACCOUNTS.member, PASSWORD);
+
+    if ((await openAiSheet(page, t)) !== 'absent') {
+      // Swallow it entirely: no response, ever.
+      await page.route('**/ai/food-log/analyze', () => {});
+
+      await typeInto(page, page.locator('#ai-food-text'), 'two eggs and toast');
+      await wait(400);
+      await mouseClick(page, page.locator(`button:has-text("${t('aiFood.choose.analyseText')}")`).first());
+
+      await wait(6000);
+      const early = await page.locator('body').innerText();
+      record('failure-api', 'a request that never answers keeps the member informed',
+        early.includes(t('aiFood.loading.working')) ? 'PASS' : 'FAIL');
+      record('failure-api', 'and offers a way out while it waits',
+        early.includes(t('common.cancel')) ? 'PASS' : 'FAIL');
+      await shot(page, 'failure-api', 'hung-request-waiting');
+
+      // The client gives up at 60s and must say so rather than spinning forever.
+      await wait(62000);
+      const late = await page.locator('body').innerText();
+      record('failure-api', 'a request that never answers eventually gives up',
+        late.includes(t('aiFood.error.title')) ? 'PASS' : 'FAIL',
+        late.includes(t('aiFood.loading.working')) ? 'still spinning after 68s' : '');
+      await shot(page, 'failure-api', 'hung-request-gave-up');
+    }
+    await ctx.close();
+  }
+});
+
 /* ------------------------------------------------------------------- run */
 
 const wanted = process.argv.slice(2);
 
 /*
  * EVERY GROUP BUT THE LANGUAGE ONES ASSERTS AGAINST ENGLISH, so the account
- * has to start in English.
+ * has to be in English when each one starts.
  *
- * It is set here rather than trusted, because a language group that fails
- * part way through leaves the account in whatever language it had reached —
- * and the next group then reports "the AI entry point is missing" about an
- * entry point that is sitting there in French. A whole run was lost to that.
+ * Reset BEFORE EVERY GROUP, not once at the beginning. A language group that
+ * fails part way — or one whose restore quietly does not take — leaves the
+ * account in whatever language it reached, and every group after it then
+ * reports "the AI entry point is missing" about an entry point sitting right
+ * there in French. That happened: four groups and a forty-minute run, lost to
+ * one earlier group's leftovers.
+ *
+ * Done through the database rather than the interface because this is setting
+ * up the test, not part of it. The language switcher has its own scenario.
  */
-await (async () => {
-  const PHP = 'php';
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
+const { execFile } = await import('node:child_process');
+const { promisify } = await import('node:util');
+const run = promisify(execFile);
+
+async function resetLanguage() {
   try {
-    const { stdout } = await promisify(execFile)(PHP, ['-r', `
+    const { stdout } = await run('php', ['-r', `
       require 'vendor/autoload.php';
       $app = require 'bootstrap/app.php';
       $app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
       $u = App\\Models\\User::where('email', 'member@myextremetrainer.com')->first();
-      if ($u && $u->locale !== 'en') { $u->locale = 'en'; $u->save(); echo "reset to en\\n"; }
-      else { echo "already en\\n"; }
+      if ($u && $u->locale !== 'en') { $was = $u->locale; $u->locale = 'en'; $u->save(); echo 'reset from '.$was; }
+      else { echo 'already en'; }
     `], { timeout: 60000 });
-    console.log('  member language:', stdout.trim());
+    return stdout.trim();
   } catch (e) {
-    console.log('  member language: could not reset —', e.message.split('\n')[0].slice(0, 90));
+    return 'COULD NOT RESET — ' + e.message.split('\n')[0].slice(0, 80);
   }
-})();
+}
 
 const b = await browser();
 try {
   for (const [name, fn] of Object.entries(groups)) {
     if (wanted.length && !wanted.includes(name)) continue;
-    console.log(`\n== ${name} ==`);
+
+    const language = await resetLanguage();
+    console.log(`\n== ${name} ==${language === 'already en' ? '' : `   (language: ${language})`}`);
+
     try {
       await fn(b);
     } catch (e) {
