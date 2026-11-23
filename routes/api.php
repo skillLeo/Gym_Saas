@@ -380,8 +380,19 @@ Route::middleware(['auth:sanctum', 'verified.email', 'subscribed'])->group(funct
         $food = \App\Http\Controllers\Api\AiFoodLogController::class;
         Route::post("/food-log/analyze", [$food, "analyze"])
             ->middleware(["ai.access", "throttle:12,1"]);
+
+        /*
+         * `no-limits` on purpose. /confirm spends nothing — the analysis is
+         * already paid for and this only writes journal rows, as manual
+         * logging does. The daily count or the monthly cap can be reached
+         * between analysing and saving (the member's own second device, or
+         * another member pushing the shared cap over while this one reviews),
+         * and refusing here threw away a corrected meal to save money that was
+         * already gone. The kill switch, the per-member flag and consent are
+         * still checked.
+         */
         Route::post("/food-log/confirm", [$food, "confirm"])
-            ->middleware(["ai.access", "throttle:30,1"]);
+            ->middleware(["ai.access:no-limits", "throttle:30,1"]);
         Route::post("/consent",        [$c, "consent"])->middleware("throttle:10,1");
         Route::delete("/consent",      [$c, "revokeConsent"]);
     });

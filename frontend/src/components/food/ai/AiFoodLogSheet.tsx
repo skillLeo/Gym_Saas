@@ -22,7 +22,7 @@ import {
 import toast from 'react-hot-toast';
 import { useI18nStore } from '@/store/i18nStore';
 import {
-  analyze, canRecordAudio, confirm, fetchAiStatus, giveConsent, resizeImage,
+  analyze, canRecordAudio, confirm, fetchAiStatus, giveConsent, perServing, resizeImage,
   rowNutrition, toAiError, toConfirmFood,
   type AiError, type AiStatus, type Draft, type ReviewRow,
 } from '@/lib/aiFoodLog';
@@ -189,7 +189,23 @@ export function AiFoodLogSheet({
         const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
         const durationSeconds = (Date.now() - recordStartRef.current) / 1000;
 
-        if (blob.size > 0) void run({ audio: blob, filename: 'clip.webm', durationSeconds });
+        if (blob.size > 0) {
+          void run({ audio: blob, filename: 'clip.webm', durationSeconds });
+          return;
+        }
+
+        /*
+         * An empty recording. Tapping Speak and Stop quickly enough does it,
+         * and so does a microphone that is selected but delivering nothing —
+         * muted in hardware, or taken by another application.
+         *
+         * This used to be a bare `if (blob.size > 0)` with no else, so the
+         * sheet simply sat there: the member had pressed two buttons and the
+         * screen had not changed, with nothing to say whether it was thinking,
+         * broken, or had heard them. Say what happened and leave them on the
+         * chooser, where Type is one tap away.
+         */
+        toast.error(t('aiFood.error.nothingRecorded'));
       };
 
       recorderRef.current = recorder;
@@ -236,7 +252,20 @@ export function AiFoodLogSheet({
         items: saveable.map((row) => {
           const food = row.manual ?? row.matches[row.chosen];
 
-          return { grams: row.grams, food: toConfirmFood(food) };
+          /*
+           * The member's own food is sent BY ID. It already exists, the server
+           * checks that it belongs to them, and it is counted in servings —
+           * sending its figures back as a food record instead produced a
+           * second copy of it and a save refused with "has no gram weight
+           * recorded", because a custom food need not have one.
+           */
+          if (food.is_custom && food.food_item_id) {
+            return { food_item_id: food.food_item_id, servings: row.servings ?? 1 };
+          }
+
+          return perServing(food)
+            ? { servings: row.servings ?? 1, food: toConfirmFood(food) }
+            : { grams: row.grams, food: toConfirmFood(food) };
         }),
       });
 
@@ -248,9 +277,19 @@ export function AiFoodLogSheet({
       onSaved();
       onClose();
     } catch (e) {
-      const err = toAiError(e, t('aiFood.error.saveFailed'));
-      setError(err);
-      setStep('error');
+      /*
+       * STAY ON THE REVIEW SCREEN. This used to setStep('error'), and the
+       * error view's only way forward is "Try again", which goes back to the
+       * chooser — so a single refused save deleted every correction the member
+       * had just made, with no way back to them. One wrong row, and a meal
+       * they had spent a minute fixing was gone.
+       *
+       * Nothing has been written when this fires: /confirm runs inside one
+       * transaction, so a failure means no entries at all rather than half a
+       * meal. The rows on screen are still exactly what they were, so the
+       * honest thing is to say what went wrong and leave them there to fix it.
+       */
+      toast.error(toAiError(e, t('aiFood.error.saveFailed')).message);
     } finally {
       setSaving(false);
     }

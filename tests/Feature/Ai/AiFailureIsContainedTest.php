@@ -109,6 +109,35 @@ class AiFailureIsContainedTest extends TestCase
             ->assertJsonPath('data.total_calories', 180);
     }
 
+    /**
+     * A meal already analysed and already corrected must still save.
+     *
+     * The limits exist to stop money being spent. /confirm spends none: the
+     * analysis is paid for, the member has spent a minute fixing the portions,
+     * and this writes journal rows exactly as manual logging does. It sat
+     * behind the same gate as /analyze, so a daily count or a monthly cap
+     * reached DURING the review — by the member's own second device, or by
+     * another member pushing the shared cap over — answered 429 and the
+     * frontend threw the whole reviewed draft away.
+     *
+     * The refusal saved nothing. The money was already gone.
+     *
+     * Only the limit states are exercised here. The kill switch and a
+     * withdrawn consent legitimately close the whole feature, and are left
+     * refusing.
+     *
+     * @return array<string, array{0: callable}>
+     */
+    public static function limitStates(): array
+    {
+        $all = self::brokenStates();
+
+        return [
+            'monthly cap reached' => $all['monthly cap reached'],
+            'daily limit used up' => $all['daily limit used up'],
+        ];
+    }
+
     #[DataProvider('brokenStates')]
     public function test_the_journal_and_its_totals_survive(callable $break): void
     {
@@ -241,21 +270,18 @@ class AiFailureIsContainedTest extends TestCase
         ])->assertStatus(201);
     }
 
-    public function test_confirm_keeps_working_when_analyse_cannot(callable|null $break = null): void
+    #[DataProvider('limitStates')]
+    public function test_confirm_keeps_working_when_analyse_cannot(callable $break): void
     {
-        // Confirming is a database write with no AI call in it, so a member
-        // who already has a draft on screen can still save it when the budget
-        // runs out between analysing and saving.
-        app(AiSettings::class)->set('ai_monthly_cap_usd', 1);
-        AiUsageLog::create([
-            'feature' => 'food_analyze_image', 'model' => 'gpt-6-luna',
-            'estimated_cost_usd' => 5, 'status' => 'ok',
-        ]);
+        $break();
 
-        // The gate still refuses, which is the deliberate choice: the cap is a
-        // spend limit and confirm spends nothing, but it keeps the rule simple.
-        // What matters is that it fails honestly rather than writing half a meal.
-        $response = $this->postJson('/api/ai/food-log/confirm', [
+        // Analysing is refused, because analysing is what costs money.
+        $this->postJson('/api/ai/food-log/analyze', ['text' => 'an apple'])
+            ->assertStatus(429)
+            ->assertJsonPath('fallback', 'manual');
+
+        // Saving the draft that was already paid for is not.
+        $this->postJson('/api/ai/food-log/confirm', [
             'meal_slot_id' => $this->slot->id,
             'logged_date'  => '2026-10-30',
             'items'        => [['grams' => 100, 'food' => [
@@ -263,10 +289,38 @@ class AiFailureIsContainedTest extends TestCase
                 'serving_qty' => 100, 'serving_unit' => 'g', 'serving_weight_grams' => 100,
                 'calories' => 52, 'protein_g' => 0.3, 'carbs_g' => 13.8, 'fat_g' => 0.2,
             ]]],
-        ]);
+        ])->assertStatus(201);
 
-        $this->assertSame(429, $response->status());
-        $this->assertSame('manual', $response->json('fallback'));
+        $this->assertDatabaseCount('food_log_entries', 1);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_confirm_is_still_refused_when_the_feature_is_switched_off(): void
+    {
+        /*
+         * The limits are a spend control and confirm spends nothing. The kill
+         * switch and consent are not spend controls — they are "this feature
+         * is not running" and "this member did not agree to it" — and those
+         * still close every AI route, including this one.
+         */
+        app(AiSettings::class)->set('ai_enabled', false);
+
+        $this->postJson('/api/ai/food-log/confirm', [
+            'meal_slot_id' => $this->slot->id,
+            'logged_date'  => '2026-10-30',
+            'items'        => [['food_item_id' => $this->food->id, 'grams' => 100]],
+        ])->assertStatus(403);
+
+        $this->user->forceFill(['ai_consent_at' => null, 'ai_consent_version' => null])->save();
+        app(AiSettings::class)->set('ai_enabled', true);
+
+        $this->postJson('/api/ai/food-log/confirm', [
+            'meal_slot_id' => $this->slot->id,
+            'logged_date'  => '2026-10-30',
+            'items'        => [['food_item_id' => $this->food->id, 'grams' => 100]],
+        ])->assertStatus(403);
+
         $this->assertDatabaseCount('food_log_entries', 0);
     }
 

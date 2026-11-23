@@ -34,6 +34,17 @@ export interface UsdaMatch {
   external_food_id: string | null;
   source: string;
   /**
+   * Set when this came from the member's OWN custom foods rather than from
+   * FoodData Central. `/food/search` returns both, and the in-review "Search
+   * for this food" box shows both, so a row can end up holding one.
+   *
+   * It changes two things, and getting either wrong is visible to the member:
+   * a custom food's nutrition is per SERVING, not per 100 g, and it is logged
+   * by its id rather than by sending its figures back to the server.
+   */
+  food_item_id?: number;
+  is_custom?: boolean;
+  /**
    * Which half of FoodData Central this came from: a curated generic food, or
    * a supermarket product. Shown in the picker because the names alone do not
    * make it obvious, and the two can differ by several hundred calories for
@@ -85,9 +96,26 @@ export interface ReviewRow {
   id: string;
   label: string;
   grams: number;
+  /**
+   * Used instead of `grams` when the chosen food is counted in servings — a
+   * custom food the member created with no gram weight on it, which is most
+   * of them, because that field is optional when you add one.
+   *
+   * See perServing(): "200 g of My Protein Shake" is not a quantity anyone
+   * can act on when the recipe was entered as one glass.
+   */
+  servings?: number;
   confidence: DraftItem['confidence'];
   /** Carried from DraftItem.match_uncertain; see the note there. */
   uncertain?: boolean;
+  /**
+   * The member has chosen the food on this row themselves.
+   *
+   * Switches off "Not sure about this one — check it", which is a statement
+   * about the match WE picked and stops being true the moment they pick a
+   * different one.
+   */
+  corrected?: boolean;
   matches: UsdaMatch[];
   /** Index into `matches`, or -1 when nothing is chosen yet. */
   chosen: number;
@@ -306,9 +334,53 @@ export function toConfirmFood(match: UsdaMatch): ConfirmItem['food'] {
  * stepper. What gets SAVED is recomputed server-side from the food record; this
  * is a preview, never the source of a stored number.
  */
+/**
+ * Is this food counted in servings rather than weighed?
+ *
+ * A FoodData Central record always carries 100 g of nutrition and a gram
+ * weight to convert with. A custom food need not: `serving_weight_grams` is
+ * optional when a member creates one, and its calories are then per serving —
+ * one glass, one bowl, one of whatever they wrote.
+ *
+ * Treating such a food as "per 100 g" goes wrong twice over. The review screen
+ * showed the member's 250-calorie shake as 250 calories per 100 g and then
+ * multiplied it by a weight nobody had entered; and the save was refused with
+ * "has no gram weight recorded", which — before the fix in this same change —
+ * threw the whole corrected draft away.
+ */
+export function perServing(food: UsdaMatch): boolean {
+  return !food.serving_weight_grams;
+}
+
+/** How much of this food the row is logging, in its own units. */
+export function rowAmount(row: ReviewRow, food: UsdaMatch): number {
+  return perServing(food) ? (row.servings ?? 1) : row.grams;
+}
+
 export function rowNutrition(row: ReviewRow): NutritionForEstimate | null {
   const food = row.manual ?? row.matches[row.chosen];
   if (!food) return null;
+
+  /*
+   * Servings multiply the figures directly; grams are per 100 g. The two
+   * cannot share a factor, because "1" means one whole serving in the first
+   * and a hundredth of the nutrition in the second.
+   */
+  if (perServing(food)) {
+    const servings = row.servings ?? 1;
+    const per = (v: number | null) => (v === null ? null : Math.round(v * servings * 10) / 10);
+
+    return {
+      grams: 0,
+      calories: Math.round(food.calories * servings * 10) / 10,
+      protein_g: Math.round(food.protein_g * servings * 10) / 10,
+      carbs_g: Math.round(food.carbs_g * servings * 10) / 10,
+      fat_g: Math.round(food.fat_g * servings * 10) / 10,
+      fiber_g: per(food.fiber_g),
+      sugar_g: per(food.sugar_g),
+      sodium_mg: per(food.sodium_mg),
+    };
+  }
 
   const factor = row.grams / 100;
   const at = (v: number | null) => (v === null ? null : Math.round(v * factor * 10) / 10);

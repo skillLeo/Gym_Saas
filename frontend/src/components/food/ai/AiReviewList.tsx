@@ -22,7 +22,7 @@ import { Select } from '@/components/ui/Controls';
 import { Trash2, Plus, Search, Loader2, Info, RotateCcw } from 'lucide-react';
 import api from '@/lib/api';
 import { useI18nStore } from '@/store/i18nStore';
-import { rowNutrition, type Draft, type ReviewRow, type UsdaMatch } from '@/lib/aiFoodLog';
+import { perServing, rowNutrition, type Draft, type ReviewRow, type UsdaMatch } from '@/lib/aiFoodLog';
 
 interface Props {
   draft: Draft;
@@ -92,7 +92,15 @@ export function AiReviewList({
             <span>{t('aiFood.review.checkEachItem')}</span>
           </p>
 
-          {draft.food_database_unavailable && (
+          {/*
+            Only when it is TRUE of something on this screen. The flag is set
+            if any single lookup in the batch failed, and the message says
+            "there are no nutrition matches to choose from" — so a plate where
+            four foods matched and a fifth timed out showed that sentence above
+            four correct matches. The fifth row says so itself, where the
+            member can act on it.
+          */}
+          {draft.food_database_unavailable && rows.some((r) => r.matches.length === 0 && !r.manual) && (
             <Alert tone="warning">{t('aiFood.review.foodDbUnavailable')}</Alert>
           )}
         </>
@@ -235,8 +243,15 @@ function Row({
               the food was (confidence), or sure of the food while the database
               returned something that barely resembles it — "wholemeal toast"
               answered by a rusk cracker. The member's action is the same
-              either way: open the list and look. */}
-          {(row.confidence === 'low' || row.uncertain) && (
+              either way: open the list and look.
+
+              Gone once the member has chosen the food themselves. Both doubts
+              are about the match WE picked; neither survives the member
+              picking a different one, and leaving the warning up after they
+              have done exactly what it asked reads as the app ignoring them.
+              It was computed once against the first match and never looked at
+              again. */}
+          {(row.confidence === 'low' || row.uncertain) && !row.corrected && (
             <p className="text-caption text-warning">{t('aiFood.review.checkThisOne')}</p>
           )}
         </div>
@@ -296,7 +311,7 @@ function Row({
                  through the "Which food" dropdown, and setting only `manual`
                  would leave that dropdown with no options to show. Same shape
                  the "Add another food" button produces. */
-              onPick={(food) => { onChange({ matches: [food], chosen: 0, manual: undefined }); setSearching(false); }}
+              onPick={(food) => { onChange({ matches: [food], chosen: 0, manual: undefined, corrected: true }); setSearching(false); }}
               onCancel={() => setSearching(false)}
             />
           )}
@@ -305,7 +320,7 @@ function Row({
         <Select
           label={t('aiFood.review.whichFood')}
           value={String(row.chosen)}
-          onChange={(v) => onChange({ chosen: Number(v), manual: undefined })}
+          onChange={(v) => onChange({ chosen: Number(v), manual: undefined, corrected: true })}
           /* Every option says whether it is a generic food or a packet. A
              branded "GREEK YOGURT" and "Yogurt, Greek, plain, lowfat" look
              equally authoritative in a dropdown and differ by 400 kcal. */
@@ -319,14 +334,33 @@ function Row({
       )}
 
       <div className="grid grid-cols-2 gap-2.5 items-end">
-        <NumericField
-          label={t('aiFood.review.weight')}
-          value={String(row.grams)}
-          onValueChange={(v) => onChange({ grams: Number(v || 0) })}
-          min={0}
-          max={5000}
-          suffix="g"
-        />
+        {/*
+          A food with no gram weight is counted, not weighed. Custom foods are
+          usually like this — the gram field is optional when a member creates
+          one — and asking for "200 g of My Protein Shake" when the recipe was
+          entered as one glass is a question with no right answer. Showing the
+          weight field anyway produced nonsense calories on screen and a save
+          the server refused.
+        */}
+        {chosen && perServing(chosen) ? (
+          <NumericField
+            label={t('aiFood.review.servings')}
+            value={String(row.servings ?? 1)}
+            onValueChange={(v) => onChange({ servings: Number(v || 0) })}
+            min={0}
+            max={100}
+            suffix={chosen.serving_unit || undefined}
+          />
+        ) : (
+          <NumericField
+            label={t('aiFood.review.weight')}
+            value={String(row.grams)}
+            onValueChange={(v) => onChange({ grams: Number(v || 0) })}
+            min={0}
+            max={5000}
+            suffix="g"
+          />
+        )}
         <div className="pb-1">
           {nutrition ? (
             <>
@@ -412,9 +446,14 @@ function FoodSearch({ onPick, onCancel }: { onPick: (f: UsdaMatch) => void; onCa
             className="w-full cursor-pointer rounded-sm px-2 py-2 text-left hover:bg-surface-sunken transition-colors"
           >
             <p className="text-body-sm text-content-primary truncate">{food.name}</p>
+            {/* "per 100 g" is true of a FoodData Central record and false of
+                the member's own food, whose figures are per serving. Printing
+                the same unit under both made a 250-calorie shake read as 250
+                calories per 100 g. */}
             <p className="text-caption text-content-tertiary tabular">
-              {Math.round(food.calories)} {t('aiFood.review.kcalPer100')}
-              {food.brand ? ` · ${food.brand}` : ''}
+              {Math.round(food.calories)}{' '}
+              {perServing(food) ? t('aiFood.review.kcalPerServing') : t('aiFood.review.kcalPer100')}
+              {food.is_custom ? ` · ${t('aiFood.review.yourOwnFood')}` : food.brand ? ` · ${food.brand}` : ''}
             </p>
           </button>
         ))}
