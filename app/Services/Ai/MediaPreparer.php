@@ -110,13 +110,36 @@ class MediaPreparer
      *
      * Always clamped to the configured maximum, so a client cannot bill us for
      * more than the endpoint would have accepted.
+     *
+     * @throws RuntimeException when the file is measurably longer than the cap.
      */
     public function billableAudioSeconds(UploadedFile $file, mixed $clientSeconds = null): ?float
     {
         $max = (float) config('ai.uploads.max_audio_seconds');
 
         if (($fromHeader = $this->audioSeconds($file)) !== null) {
-            return min($fromHeader, $max);
+            /*
+             * MEASURED LONGER THAN THE CAP MEANS REFUSE IT, NOT BILL LESS.
+             *
+             * This used to be min($fromHeader, $max): a 10-minute clip was
+             * forwarded to the provider in full and recorded as 60 seconds.
+             * The cap is described in config/ai.php as bounding the per-call
+             * cost; clamping bounds only the ESTIMATE, which is worse than not
+             * capping at all — the ledger under-reports real spend, and the
+             * monthly cap is measured against the ledger.
+             *
+             * The browser stops recording at 55 seconds, so nothing over the
+             * cap arrives from the app as built. Something over it is a
+             * different client, or a bug in this one, and both deserve an
+             * answer rather than a quiet overspend.
+             */
+            if ($fromHeader > $max) {
+                throw new RuntimeException(
+                    'That recording is longer than '.(int) $max.' seconds. Record a shorter one, or type what you ate.'
+                );
+            }
+
+            return $fromHeader;
         }
 
         if (! is_numeric($clientSeconds)) {
@@ -182,9 +205,25 @@ class MediaPreparer
                 $byteRate = unpack('V', substr($head, 28, 4))[1] ?? 0;
                 $bytes    = filesize($path);
 
-                if ($byteRate > 0 && $bytes !== false) {
+                /*
+                 * The byte rate is a number in a file the client supplied, so
+                 * it is a claim like any other and gets the same plausibility
+                 * test. Writing a huge one into the header made a long clip
+                 * measure as about a second, and because a header reading is
+                 * trusted above everything else, that figure went straight
+                 * into the ledger the monthly cap is measured against.
+                 *
+                 * Out of range, and this returns null — "unknown" — which is
+                 * billed at the full allowed clip length. The expensive answer
+                 * is the right one for a file that is lying about itself.
+                 */
+                if ($byteRate >= self::MIN_BYTES_PER_SECOND
+                    && $byteRate <= self::MAX_BYTES_PER_SECOND
+                    && $bytes !== false) {
                     return round(max(0, $bytes - 44) / $byteRate, 2);
                 }
+
+                return null;
             }
         } finally {
             fclose($handle);

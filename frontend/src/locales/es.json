@@ -388,6 +388,8 @@
   "foodJournal.deleteSlotTitle": "¿Eliminar esta sección de comida?",
   "foodJournal.done": "hecho",
   "foodJournal.history": "Historial",
+  "foodJournal.previousDay": "Día anterior",
+  "foodJournal.nextDay": "Día siguiente",
   "foodJournal.item": "elemento",
   "foodJournal.itemPlural": "elementos",
   "foodJournal.kcalOver": "{n} kcal de más",

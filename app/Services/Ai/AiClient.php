@@ -235,7 +235,8 @@ class AiClient
     }
 
     /**
-     * One HTTP attempt, plus one retry on 429/5xx.
+     * One HTTP attempt, plus one retry on 429, 5xx, or never reaching the
+     * provider at all. NOT on a read timeout — see the catch block for why.
      *
      * Returns `[Response, null]` on success or `[null, string]` on failure, in
      * preference to throwing, so that the caller can log the usage row with an
@@ -303,14 +304,37 @@ class AiClient
                     return [null, $lastError];
                 }
             } catch (\Throwable $e) {
-                // Timeout, DNS, TLS, connection reset: we never got an answer.
+                /*
+                 * DNS, TLS, connection reset — or a read timeout, which is a
+                 * different thing wearing the same exception.
+                 *
+                 * A READ TIMEOUT IS NOT RETRIED. The provider took our
+                 * request and is working on it; asking again does not make the
+                 * first one stop, so it costs a second call and doubles the
+                 * wait for an answer that was already late. On the vision
+                 * path that is 45s + 1.2s + 45s = 91 seconds of a PHP worker
+                 * on a host with few of them — for a browser that gave up at
+                 * 60 and a member who has long since moved on.
+                 *
+                 * Never reaching the provider at all is the opposite case: no
+                 * request is in flight, nothing has been billed, and a second
+                 * attempt a moment later genuinely does succeed through a
+                 * blip. That one is still retried.
+                 */
+                $timedOut = $this->isTimeout($e);
+
                 Log::warning('AI request could not be completed', [
                     'path'      => $path,
                     'exception' => $e::class,
                     'attempt'   => $attempt,
+                    'timed_out' => $timedOut,
                 ]);
 
                 $lastError = 'Could not reach the AI provider.';
+
+                if ($timedOut) {
+                    return [null, $lastError];
+                }
             }
 
             if ($attempt < $attempts) {
@@ -319,6 +343,32 @@ class AiClient
         }
 
         return [null, $lastError];
+    }
+
+    /**
+     * Did this failure happen because the provider ran out of time, rather
+     * than because we never reached it?
+     *
+     * Both arrive as the same ConnectionException, so the message is the only
+     * thing that separates them. Matched on the words cURL and Guzzle use
+     * rather than on a cURL error number, because the number is not carried
+     * through Laravel's wrapper.
+     *
+     * Wrong in the safe direction: a transport failure this fails to
+     * recognise as a timeout is merely retried once, which is what used to
+     * happen to all of them.
+     */
+    private function isTimeout(\Throwable $e): bool
+    {
+        $message = mb_strtolower($e->getMessage());
+
+        foreach (['timed out', 'timeout', 'operation too slow'] as $needle) {
+            if (str_contains($message, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function url(string $path): string

@@ -388,6 +388,8 @@
   "foodJournal.deleteSlotTitle": "Delete this meal section?",
   "foodJournal.done": "done",
   "foodJournal.history": "History",
+  "foodJournal.previousDay": "Previous day",
+  "foodJournal.nextDay": "Next day",
   "foodJournal.item": "item",
   "foodJournal.itemPlural": "items",
   "foodJournal.kcalOver": "{n} kcal over",

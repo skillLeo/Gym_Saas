@@ -70,6 +70,28 @@ class AiVoiceBillingTest extends TestCase
     }
 
     /**
+     * A WAV whose header claims a byte rate the audio does not have.
+     *
+     * The data is sized for a real 16 kHz mono clip of $seconds; only the
+     * declared rate is wrong, which is exactly the forgery that matters —
+     * duration is derived from (bytes / byteRate).
+     */
+    private function wavWithByteRate(float $seconds, int $declaredByteRate): UploadedFile
+    {
+        $rate = 16000;
+        $data = str_repeat(pack('v', 1000), max(1, (int) ($rate * $seconds)));
+
+        $header = 'RIFF' . pack('V', 36 + strlen($data)) . 'WAVEfmt ' . pack('V', 16)
+            . pack('v', 1) . pack('v', 1) . pack('V', $rate) . pack('V', $declaredByteRate)
+            . pack('v', 2) . pack('v', 16) . 'data' . pack('V', strlen($data));
+
+        $path = tempnam(sys_get_temp_dir(), 'wav') . '.wav';
+        file_put_contents($path, $header . $data);
+
+        return new UploadedFile($path, 'clip.wav', 'audio/wav', null, true);
+    }
+
+    /**
      * An opaque blob of exactly $bytes, for the unit-level checks where the
      * precise size is the thing under test.
      */
@@ -109,11 +131,77 @@ class AiVoiceBillingTest extends TestCase
         $this->assertSame(4.0, round($this->preparer()->billableAudioSeconds($file, 0.5), 1));
     }
 
-    public function test_a_header_longer_than_the_maximum_is_clamped(): void
+    public function test_a_file_measurably_longer_than_the_maximum_is_refused(): void
     {
+        /*
+         * This used to be clamped to 60 and sent anyway, so a ten-minute clip
+         * was transcribed in full and written into the ledger as one minute.
+         * The cap is documented as bounding the per-call COST; clamping bounds
+         * only the estimate, which is worse than having no cap, because the
+         * monthly budget is measured against that estimate.
+         */
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/longer than 60 seconds/');
+
+        $this->preparer()->billableAudioSeconds($this->wav(90), null);
+    }
+
+    public function test_a_clip_at_the_maximum_is_still_accepted(): void
+    {
+        // The limit is a limit, not a margin: exactly 60 seconds is fine.
         $this->assertSame(
             60.0,
-            round($this->preparer()->billableAudioSeconds($this->wav(90), null), 1),
+            round($this->preparer()->billableAudioSeconds($this->wav(60), null), 1),
+        );
+    }
+
+    public function test_an_over_long_recording_is_refused_by_the_endpoint_not_billed(): void
+    {
+        $user = $this->member();
+        Sanctum::actingAs($user);
+
+        $this->postJson('/api/ai/food-log/analyze', [], [])
+            ->assertStatus(422); // sanity: the endpoint is reachable
+
+        $response = $this->post('/api/ai/food-log/analyze', [
+            'audio' => $this->wav(120),
+        ], ['Accept' => 'application/json']);
+
+        $this->assertSame(422, $response->status());
+        $this->assertStringContainsString('longer than 60 seconds', (string) $response->json('error'));
+        $this->assertSame('manual', $response->json('fallback'));
+
+        // Nothing was sent to the provider, so nothing was billed.
+        Http::assertNothingSent();
+        $this->assertSame(0, AiUsageLog::count());
+    }
+
+    public function test_a_forged_byte_rate_cannot_make_a_long_clip_look_short(): void
+    {
+        /*
+         * The byte rate lives in a file the client supplied, so it is a claim
+         * like any other. Writing an enormous one made a long recording
+         * measure as about a second — and a header reading is trusted above
+         * everything else, so that figure went straight into the ledger the
+         * monthly cap is measured against.
+         *
+         * Out of range now reads as "unknown", which is billed at the full
+         * allowed clip length. The expensive answer is the right one for a
+         * file that is lying about itself.
+         */
+        $file = $this->wavWithByteRate(20.0, 50_000_000);
+
+        $this->assertNull(
+            $this->preparer()->billableAudioSeconds($file, null),
+            'a forged byte rate was believed',
+        );
+    }
+
+    public function test_a_byte_rate_too_small_to_be_audio_is_also_discarded(): void
+    {
+        // The opposite forgery: a tiny rate makes a short clip measure as hours.
+        $this->assertNull(
+            $this->preparer()->billableAudioSeconds($this->wavWithByteRate(2.0, 1), null),
         );
     }
 

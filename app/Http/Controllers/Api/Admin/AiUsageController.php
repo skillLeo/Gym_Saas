@@ -46,7 +46,24 @@ class AiUsageController extends Controller
                     'starts_on'    => $monthStart->toDateString(),
                     'spent_usd'    => round($spent, 4),
                     'cap_usd'      => round($cap, 2),
-                    'remaining_usd'=> round(max(0, $cap - $spent), 4),
+                    /*
+                     * A CAP OF ZERO MEANS NO CAP, AND THE SCREEN HAS TO SAY SO.
+                     *
+                     * It is what assertWithinLimits() does — `$cap > 0 &&
+                     * $spent >= $cap` — and what the setting is documented to
+                     * mean. But the numbers alone read as the exact opposite:
+                     * an admin who cleared the field saw "$0.00 of $0.00,
+                     * $0.00 left", which is how a screen says "you have run
+                     * out", above a feature that was in fact spending without
+                     * any ceiling at all. The most reassuring possible display
+                     * of the least safe possible state.
+                     *
+                     * So the remaining figure is null rather than 0 when there
+                     * is no cap — "not applicable", which the screen can
+                     * render as words — and `uncapped` says it outright.
+                     */
+                    'uncapped'     => $cap <= 0,
+                    'remaining_usd'=> $cap > 0 ? round(max(0, $cap - $spent), 4) : null,
                     // Clamped at 100 so a cap that was lowered mid-month cannot
                     // render a progress bar wider than its track.
                     'percent_used' => $cap > 0 ? min(100, round(($spent / $cap) * 100, 1)) : null,

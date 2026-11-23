@@ -489,8 +489,46 @@ class AiGroundworkTest extends TestCase
             ->assertJsonPath('data.month.percent_used', 25)
             ->assertJsonPath('data.month.cap_reached', false)
             ->assertJsonPath('data.by_feature.0.feature', 'food_analyze_image')
+            ->assertJsonPath('data.month.uncapped', false)
             ->assertJsonPath('data.top_users.0.user_id', $user->id)
             ->assertJsonPath('data.api_key_present', true);
+    }
+
+    public function test_a_cap_of_zero_is_reported_as_no_cap_rather_than_no_budget(): void
+    {
+        /*
+         * Zero switches the cap OFF — that is what assertWithinLimits() does
+         * and what the setting means. The usage page used to render it as
+         * "$0.00 of $0.00, $0.00 left", which is how a screen says "you have
+         * run out", above a feature that was in fact spending with no ceiling.
+         * The most reassuring possible display of the least safe state.
+         */
+        app(AiSettings::class)->set('ai_monthly_cap_usd', 0);
+        $this->spend(3.00, $this->enabledMember());
+
+        Sanctum::actingAs($this->admin());
+
+        $this->getJson('/api/admin/ai-usage')
+            ->assertOk()
+            ->assertJsonPath('data.month.uncapped', true)
+            ->assertJsonPath('data.month.cap_reached', false)
+            // Null, not 0: "not applicable", which a screen can render as words.
+            ->assertJsonPath('data.month.remaining_usd', null)
+            ->assertJsonPath('data.month.percent_used', null)
+            ->assertJsonPath('data.month.spent_usd', 3);
+    }
+
+    public function test_a_cap_of_zero_really_does_let_spending_through(): void
+    {
+        // The display fix above is only honest if this is what happens.
+        app(AiSettings::class)->set('ai_monthly_cap_usd', 0);
+        $user = $this->enabledMember();
+        $this->spend(500.00, $user);
+
+        Sanctum::actingAs($user);
+        app(\App\Services\Ai\AiGate::class)->assertWithinLimits($user);
+
+        $this->addToAssertionCount(1);
     }
 
     public function test_an_admin_can_change_the_cap_and_the_kill_switch(): void

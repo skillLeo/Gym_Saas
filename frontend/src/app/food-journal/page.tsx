@@ -372,14 +372,17 @@ export default function FoodJournalPage() {
 
         {/* Date Navigator */}
         <div className="flex items-center justify-between bg-surface-raised rounded-md border border-border-subtle px-4 py-3 mb-5 shadow-sm">
-          <button onClick={() => changeDate(-1)} className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
+          {/* Named, because a chevron is not a name. A screen reader read both
+              of these as "button", leaving the only way to change the day on
+              this page unidentifiable without sight. */}
+          <button onClick={() => changeDate(-1)} aria-label={t('foodJournal.previousDay')} className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">
             <ChevronLeft size={18} className="text-content-secondary" />
           </button>
           <div className="text-center">
             <div className="font-semibold text-content-primary" suppressHydrationWarning>{formatDayLabel(date)}</div>
             <div className="text-xs text-content-tertiary" suppressHydrationWarning>{formatDate(date, locale, { day: 'numeric', month: 'long', year: 'numeric' })}</div>
           </div>
-          <button onClick={() => changeDate(1)} disabled={isToday}
+          <button onClick={() => changeDate(1)} disabled={isToday} aria-label={t('foodJournal.nextDay')}
             className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-30">
             <ChevronRight size={18} className="text-content-secondary" />
           </button>

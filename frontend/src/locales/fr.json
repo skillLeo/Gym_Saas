@@ -388,6 +388,8 @@
   "foodJournal.deleteSlotTitle": "Supprimer ce créneau de repas ?",
   "foodJournal.done": "fait",
   "foodJournal.history": "Historique",
+  "foodJournal.previousDay": "Jour précédent",
+  "foodJournal.nextDay": "Jour suivant",
   "foodJournal.item": "élément",
   "foodJournal.itemPlural": "éléments",
   "foodJournal.kcalOver": "{n} kcal de trop",

@@ -48,7 +48,10 @@ interface AiUsage {
     starts_on: string;
     spent_usd: number;
     cap_usd: number;
-    remaining_usd: number;
+    /** True when the cap is 0, which switches the cap off entirely. */
+    uncapped: boolean;
+    /** Null when uncapped — "not applicable", not "nothing left". */
+    remaining_usd: number | null;
     percent_used: number | null;
     cap_reached: boolean;
   };
@@ -229,25 +232,36 @@ export default function AdminAiUsagePage() {
               </div>
             </div>
 
+            {/*
+              A cap of zero means NO cap — that is what the limit check does
+              and what the setting is documented to mean. Printed as numbers it
+              said the opposite: "$0.00 of $0.00, $0.00 left" is how a screen
+              says "you have run out", above a feature that was spending with
+              no ceiling at all. Say it in words instead.
+            */}
             <div className="flex items-baseline gap-2 mb-1">
               <span className="font-display text-3xl font-bold text-content-primary tabular">
                 {money(month.spent_usd)}
               </span>
-              <span className="text-sm text-content-secondary tabular">
-                of {money(month.cap_usd)}
+              <span className={`text-sm tabular ${month.uncapped ? 'text-warning' : 'text-content-secondary'}`}>
+                {month.uncapped ? 'with no spending cap set' : `of ${money(month.cap_usd)}`}
               </span>
             </div>
 
-            <div className="mb-3">
-              <ProgressBar
-                value={month.spent_usd}
-                max={month.cap_usd > 0 ? month.cap_usd : 1}
-                color={month.cap_reached ? 'var(--error)' : 'var(--accent)'}
-              />
-            </div>
+            {!month.uncapped && (
+              <div className="mb-3">
+                <ProgressBar
+                  value={month.spent_usd}
+                  max={month.cap_usd}
+                  color={month.cap_reached ? 'var(--error)' : 'var(--accent)'}
+                />
+              </div>
+            )}
 
             <p className="text-xs text-content-tertiary">
-              {money(month.remaining_usd)} left.{' '}
+              {month.uncapped
+                ? 'Nothing will stop this spending. Set a monthly cap below. '
+                : `${money(month.remaining_usd ?? 0)} left. `}
               <strong className="text-content-secondary">
                 These figures are estimates
               </strong>{' '}
