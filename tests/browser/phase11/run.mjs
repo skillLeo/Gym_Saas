@@ -622,6 +622,106 @@ group('snap', async (b) => {
   await page.context().close();
 });
 
+/* ------------------------------------------------------- the member's own food */
+
+/**
+ * Adding one of your own foods to a reviewed meal.
+ *
+ * The reviewers found this was the easiest way to destroy a draft. A custom
+ * food's nutrition is per SERVING and its gram weight is optional, so the
+ * review screen showed nonsense calories and then the save was refused with
+ * "has no gram weight recorded" — which took every correction with it.
+ *
+ * The food is created through the API because creating it is not what is
+ * under test; everything after that is the real screen.
+ */
+group('custom-food', async (b) => {
+  const t = strings('en');
+  const ctx = await context(b, 'desktop');
+  const page = await ctx.newPage();
+  await signIn(page, ACCOUNTS.member, PASSWORD);
+
+  const name = `Probe Shake ${Date.now().toString().slice(-6)}`;
+
+  const made = await page.evaluate(async ([api, foodName]) => {
+    // Same two places lib/auth.ts looks, in the same order.
+    const token = sessionStorage.getItem('auth_token') ?? localStorage.getItem('auth_token');
+    const res = await fetch(`${api}/api/food/custom`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      // No serving_weight_grams: the field is optional, and leaving it out is
+      // what most members do. That is the whole point of this scenario.
+      body: JSON.stringify({
+        name: foodName, serving_qty: 1, serving_unit: 'glass',
+        calories: 250, protein_g: 30, carbs_g: 12, fat_g: 6,
+      }),
+    });
+    return { status: res.status, body: (await res.text()).slice(0, 160) };
+  }, [API, name]);
+
+  record('custom-food', 'a custom food with no gram weight can be created',
+    made.status === 201 ? 'PASS' : 'FAIL', `${made.status} ${made.status === 201 ? '' : made.body}`);
+
+  if (made.status !== 201) { await ctx.close(); return; }
+
+  if ((await openAiSheet(page, t)) === 'absent') {
+    record('custom-food', 'the review screen', 'BLOCKED', 'entry point missing');
+    await ctx.close();
+    return;
+  }
+
+  await typeInto(page, page.locator('#ai-food-text'), 'two eggs and toast');
+  await wait(400);
+  await mouseClick(page, page.locator(`button:has-text("${t('aiFood.choose.analyseText')}")`).first());
+
+  if ((await settled(page, t)) !== 'review') {
+    record('custom-food', 'a draft to add the food to', 'BLOCKED', 'no review screen');
+    await ctx.close();
+    return;
+  }
+
+  await mouseClick(page, page.locator(`button:has-text("${t('aiFood.review.addItem')}")`).first());
+  await wait(1500);
+
+  // The search box the "Add another food" panel just opened: it autofocuses,
+  // so the focused field is the one to type into.
+  await page.keyboard.type(name.slice(0, 11), { delay: 25 });
+  await wait(2800);
+
+  const hit = page.locator(`text=${name}`);
+  if (!(await present(hit, 15000))) {
+    record('custom-food', 'the member can find their own food from the review screen', 'FAIL', 'not in results');
+    await shot(page, 'custom-food', 'not-found');
+    await ctx.close();
+    return;
+  }
+
+  const listed = await page.locator('body').innerText();
+  record('custom-food', 'the member can find their own food from the review screen', 'PASS');
+  record('custom-food', 'their food is priced per serving, not per 100 g',
+    listed.includes(t('aiFood.review.kcalPerServing')) ? 'PASS' : 'FAIL');
+
+  await mouseClick(page, hit);
+  await wait(2000);
+  await shot(page, 'custom-food', 'row-added');
+
+  const after = await page.locator('body').innerText();
+  record('custom-food', 'the row asks for servings, not a weight in grams',
+    after.includes(t('aiFood.review.servings')) ? 'PASS' : 'FAIL');
+  record('custom-food', 'one serving reads as its own calories',
+    /\b250(\.0)? kcal/.test(after) ? 'PASS' : 'FAIL');
+
+  // And it saves, which is what used to destroy the draft.
+  await mouseClick(page, page.locator(`button:has-text("${t('aiFood.review.save')}")`).first());
+  await wait(9000);
+  const saved = (await page.locator('body').innerText()).includes(t('aiFood.review.title'));
+  record('custom-food', 'saving a meal containing their own food works',
+    saved ? 'FAIL' : 'PASS', saved ? 'still on the review screen' : 'sheet closed');
+  await shot(page, 'custom-food', 'after-save');
+
+  await ctx.close();
+});
+
 /* -------------------------------------------------------------- languages */
 
 for (const locale of ['es', 'fr']) {
@@ -630,6 +730,14 @@ for (const locale of ['es', 'fr']) {
     const en = strings('en');
     const page = await (await context(b, 'desktop')).newPage();
     await signIn(page, ACCOUNTS.member, PASSWORD);
+
+    /*
+     * Start from English every time, whatever the previous group left behind.
+     * These ran in sequence and the second one kept failing, because it began
+     * in the first one's language and the scenario is about the change, not
+     * the destination.
+     */
+    await setLanguage(page, 'en');
 
     if (!(await setLanguage(page, locale))) {
       record(`lang-${locale}`, 'language can be switched from Settings', 'FAIL', 'no switcher');
@@ -676,6 +784,10 @@ for (const locale of ['es', 'fr']) {
       record(`lang-${locale}`, 'the review screen has no untranslated English left',
         reviewBody.includes(en('aiFood.review.save')) ? 'FAIL' : 'PASS');
     }
+
+    // Leave the account in English, so the next group — and the next person to
+    // open this browser — does not inherit a language they did not choose.
+    await setLanguage(page, 'en');
 
     await page.context().close();
   });

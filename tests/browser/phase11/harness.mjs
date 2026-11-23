@@ -129,10 +129,16 @@ export async function mouseClick(page, locator, { timeout = 15000 } = {}) {
     box = await el.boundingBox();
     if (!box) continue;
 
+    /*
+     * `node.contains(at)` only — NOT `at.contains(node)`. A point that
+     * resolves to an ancestor is a point in the gap beside the element, not
+     * on it, and accepting those let a click land between two language
+     * buttons (or, as the layout settled, on the wrong one).
+     */
     const onTarget = await page.evaluate(
       ([node, x, y]) => {
         const at = document.elementFromPoint(x, y);
-        return !!at && (at === node || node.contains(at) || at.contains(node));
+        return !!at && (at === node || node.contains(at));
       },
       [handle, box.x + box.width / 2, box.y + box.height / 2],
     );
@@ -201,27 +207,42 @@ export async function setLanguage(page, code) {
    * translated" about a page that had been quietly reverted. Watching for the
    * response removes the race rather than making it less likely.
    */
-  const saved = page
-    .waitForResponse(
-      (r) => r.url().includes('/auth/user') && r.request().method() === 'PUT',
-      { timeout: 30000 },
-    )
-    .catch(() => null);
+  const already = async () =>
+    (await page.evaluate(() => document.documentElement.lang).catch(() => '')) === code &&
+    (await btn.getAttribute('aria-pressed').catch(() => null)) === 'true';
 
-  await mouseClick(page, btn);
+  if (await already()) return true;
 
-  const response = await saved;
-  if (!response || !response.ok()) return false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const saved = page
+      .waitForResponse(
+        (r) => r.url().includes('/auth/user') && r.request().method() === 'PUT',
+        { timeout: 30000 },
+      )
+      .catch(() => null);
 
-  // ...and then for the interface to actually be in it.
-  const until = Date.now() + 15000;
-  while (Date.now() < until) {
-    const lang = await page.evaluate(() => document.documentElement.lang).catch(() => '');
-    if (lang === code && (await btn.getAttribute('aria-pressed').catch(() => null)) === 'true') {
-      return true;
+    await mouseClick(page, btn);
+
+    const response = await saved;
+    if (!response || !response.ok()) continue;
+
+    // ...and then for the interface to actually be in it.
+    const until = Date.now() + 12000;
+    while (Date.now() < until) {
+      if (await already()) return true;
+      await wait(300);
     }
-    await wait(300);
+
+    /*
+     * The save succeeded and the interface is in some OTHER language, which
+     * means the press landed on a neighbouring button. Three small buttons in
+     * a row that widen when their labels appear is a genuinely awkward target,
+     * and the point of a real-mouse harness is that it has to hit them. Try
+     * again rather than reporting a translation failure about a page that was
+     * switched to the wrong language.
+     */
   }
+
   return false;
 }
 
