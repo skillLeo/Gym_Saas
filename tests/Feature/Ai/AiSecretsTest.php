@@ -111,8 +111,8 @@ class AiSecretsTest extends TestCase
                 [['role' => 'user', 'content' => 'an apple']],
                 ['type' => 'object', 'properties' => ['ok' => ['type' => 'boolean']], 'required' => ['ok'], 'additionalProperties' => false],
                 'probe',
-                'text',
                 $this->member(),
+                'text',
             );
             $this->fail('Expected AiUnavailable.');
         } catch (AiUnavailable $e) {
@@ -145,8 +145,8 @@ class AiSecretsTest extends TestCase
                 [['role' => 'user', 'content' => 'an apple']],
                 ['type' => 'object', 'properties' => ['ok' => ['type' => 'boolean']], 'required' => ['ok'], 'additionalProperties' => false],
                 'probe',
-                'text',
                 $this->member(),
+                'text',
             );
             $this->fail('Expected AiUnavailable.');
         } catch (AiUnavailable $e) {
@@ -171,8 +171,8 @@ class AiSecretsTest extends TestCase
                 [['role' => 'user', 'content' => 'a secret diary entry about my eating']],
                 ['type' => 'object', 'properties' => ['ok' => ['type' => 'boolean']], 'required' => ['ok'], 'additionalProperties' => false],
                 'probe',
-                'text',
                 $this->member(),
+                'text',
             );
         } catch (\App\Services\Ai\Exceptions\AiInvalidResponse) {
             // expected

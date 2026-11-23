@@ -190,27 +190,37 @@ export async function setLanguage(page, code) {
   const btn = page.locator(`button[lang="${code}"]`);
   if (!(await present(btn))) return false;
 
-  await mouseClick(page, btn);
-
   /*
-   * Wait for the change to have STUCK, not merely to have been clicked.
+   * Wait for the SAVE, not for the click.
    *
    * Choosing a language sets the store and then PUTs /auth/user; if that
    * request fails the handler puts the old language back. Navigating away
-   * while it is in flight aborts it, which is a failure — so a fixed sleep
-   * raced the save and sometimes left the next page in English, reported as
-   * "the AI entry point is not translated" about a page that was never
-   * switched.
+   * while it is still in flight aborts it, which counts as a failure — so a
+   * fixed sleep raced the save, and the next page came up in the PREVIOUS
+   * language. That was then reported as "the AI entry point is not
+   * translated" about a page that had been quietly reverted. Watching for the
+   * response removes the race rather than making it less likely.
    */
-  const until = Date.now() + 25000;
+  const saved = page
+    .waitForResponse(
+      (r) => r.url().includes('/auth/user') && r.request().method() === 'PUT',
+      { timeout: 30000 },
+    )
+    .catch(() => null);
+
+  await mouseClick(page, btn);
+
+  const response = await saved;
+  if (!response || !response.ok()) return false;
+
+  // ...and then for the interface to actually be in it.
+  const until = Date.now() + 15000;
   while (Date.now() < until) {
     const lang = await page.evaluate(() => document.documentElement.lang).catch(() => '');
-    const pressed = await btn.getAttribute('aria-pressed').catch(() => null);
-    if (lang === code && pressed === 'true') {
-      await wait(1200); // let the PUT finish; aborting it reverts the choice
+    if (lang === code && (await btn.getAttribute('aria-pressed').catch(() => null)) === 'true') {
       return true;
     }
-    await wait(400);
+    await wait(300);
   }
   return false;
 }

@@ -151,8 +151,8 @@ class FoodAnalyzer
             ],
             self::SCHEMA,
             'food_draft',
-            'vision',
             $user,
+            'vision',
         );
 
         // A photo is of a plated meal: see the note in withUsdaMatches().
@@ -179,8 +179,8 @@ class FoodAnalyzer
             ],
             self::SCHEMA,
             'food_draft',
-            'text',
             $user,
+            'text',
         );
 
         return $this->withUsdaMatches($draft);

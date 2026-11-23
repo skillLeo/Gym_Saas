@@ -56,8 +56,21 @@ class AiClient
         array $input,
         array $schema,
         string $schemaName,
+        /*
+         * REQUIRED, AND BEFORE $kind FOR THAT REASON.
+         *
+         * It was `?User $user = null` in last place, and the whole of
+         * assertCallAllowed() sat inside `if ($user !== null)`. Every caller
+         * does pass one, so nothing was wrong today — but the easy mistake
+         * (add a caller, forget the last argument) silently switched off the
+         * kill switch, the consent check, the daily limit and the spend cap at
+         * once, and spent the client's money doing it. A parameter whose
+         * absence disables every safety check should not be optional, so it is
+         * not, and PHP will not allow a required parameter after an optional
+         * one — hence the position.
+         */
+        User $user,
         string $kind = 'text',
-        ?User $user = null,
     ): array {
         $this->assertCallAllowed($user, $feature);
 
@@ -152,8 +165,9 @@ class AiClient
         string $feature,
         string $path,
         string $filename,
+        /* Required, and before $seconds — see structured(). */
+        User $user,
         ?float $seconds = null,
-        ?User $user = null,
     ): string {
         $this->assertCallAllowed($user, $feature);
 
@@ -212,26 +226,27 @@ class AiClient
     /**
      * @throws AiLimitReached
      */
-    private function assertCallAllowed(?User $user, string $feature): void
+    private function assertCallAllowed(User $user, string $feature): void
     {
         /*
          * Re-checked here even though the middleware has already run, so that
          * a controller which forgets the middleware cannot spend money. See
          * AiGate's class docblock.
+         *
+         * No null branch any more: $user is required by both public methods,
+         * so there is no longer a way to arrive here with nothing to check.
          */
-        if ($user !== null) {
-            if (($problem = $this->gate->accessProblem($user)) !== null) {
-                // Not a limit — a permission fault that should have been caught
-                // at the route. Logged as blocked so it is visible on the admin
-                // screen, then reported as unavailable rather than leaking which
-                // internal check failed.
-                $this->log($user, $feature, 'n/a', null, null, 0.0, 'blocked', null);
+        if (($problem = $this->gate->accessProblem($user)) !== null) {
+            // Not a limit — a permission fault that should have been caught
+            // at the route. Logged as blocked so it is visible on the admin
+            // screen, then reported as unavailable rather than leaking which
+            // internal check failed.
+            $this->log($user, $feature, 'n/a', null, null, 0.0, 'blocked', null);
 
-                throw new AiUnavailable('AI call blocked by gate: '.$problem['code']);
-            }
-
-            $this->gate->assertWithinLimits($user);
+            throw new AiUnavailable('AI call blocked by gate: '.$problem['code']);
         }
+
+        $this->gate->assertWithinLimits($user);
     }
 
     /**

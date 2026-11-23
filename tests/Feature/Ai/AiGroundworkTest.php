@@ -245,8 +245,8 @@ class AiGroundworkTest extends TestCase
                 [['role' => 'user', 'content' => 'an apple']],
                 ['type' => 'object', 'properties' => [], 'additionalProperties' => false],
                 'probe',
-                'text',
                 $user,
+                'text',
             );
         } finally {
             Http::assertNothingSent();

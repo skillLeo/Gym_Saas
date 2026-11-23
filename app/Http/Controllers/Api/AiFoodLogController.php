@@ -212,8 +212,8 @@ class AiFoodLogController extends Controller
             // A generic name, not the member's own filename, which on a phone
             // can carry a timestamp or a location-derived album title.
             'clip.'.($file->guessExtension() ?: 'webm'),
-            $this->media->billableAudioSeconds($file, $request->input('duration_seconds')),
             $request->user(),
+            $this->media->billableAudioSeconds($file, $request->input('duration_seconds')),
         );
 
         if (trim($transcript) === '') {

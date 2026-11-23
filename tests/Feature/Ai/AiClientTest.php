@@ -82,15 +82,15 @@ class AiClientTest extends TestCase
         ];
     }
 
-    private function analyze(?User $user = null): array
+    private function analyze(User $user): array
     {
         return app(AiClient::class)->structured(
             'food_analyze_text',
             [['role' => 'user', 'content' => 'one apple']],
             self::SCHEMA,
             'food_items',
-            'text',
             $user,
+            'text',
         );
     }
 
@@ -423,7 +423,7 @@ class AiClientTest extends TestCase
 
         try {
             $text = app(AiClient::class)->transcribe(
-                'food_analyze_audio', $path, 'clip.webm', 30.0, $this->member(),
+                'food_analyze_audio', $path, 'clip.webm', $this->member(), 30.0,
             );
         } finally {
             @unlink($path);
@@ -448,7 +448,7 @@ class AiClientTest extends TestCase
         file_put_contents($path, 'x');
 
         try {
-            app(AiClient::class)->transcribe('food_analyze_audio', $path, 'clip.webm', null, $this->member());
+            app(AiClient::class)->transcribe('food_analyze_audio', $path, 'clip.webm', $this->member(), null);
         } finally {
             @unlink($path);
         }
