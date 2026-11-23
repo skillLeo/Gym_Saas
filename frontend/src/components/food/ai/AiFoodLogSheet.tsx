@@ -349,6 +349,19 @@ export function AiFoodLogSheet({
       open={open}
       onClose={onClose}
       title={title}
+      /*
+       * Not dismissable by a stray tap while the analysis is in flight.
+       *
+       * The loading view is shorter than the chooser, so the second press of
+       * a double click on "Find these foods" landed BELOW the sheet, on the
+       * scrim — closing it and abandoning a call that had already been sent
+       * and would still be billed. A member who taps beside the sheet while
+       * waiting loses the same thing.
+       *
+       * Nothing is hidden by this: the loading view carries its own Cancel,
+       * which aborts the request as well as closing the view.
+       */
+      dismissible={step !== 'loading'}
       description={step === 'choose' ? t('aiFood.subtitle') : undefined}
       footer={
         step === 'review' ? (

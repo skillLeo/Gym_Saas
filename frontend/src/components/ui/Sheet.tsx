@@ -14,6 +14,21 @@ interface SheetProps {
   className?: string;
   /** Hide the default close button when the content provides its own. */
   hideClose?: boolean;
+  /**
+   * Allow the casual dismissals — scrim click, Escape, drag down.
+   *
+   * Defaults to true, which is right for a sheet whose content can be
+   * reopened. Set it false while something is in flight that closing would
+   * throw away. The explicit close button and whatever the content offers
+   * stay available, so this hides nothing: it only stops a stray tap outside
+   * from discarding work.
+   *
+   * See AiFoodLogSheet: the loading view is shorter than the chooser, so the
+   * second press of a double click on "Find these foods" landed BELOW the
+   * sheet, on the scrim, and closed it — abandoning an analysis that had
+   * already been sent and would still be billed.
+   */
+  dismissible?: boolean;
 }
 
 /**
@@ -32,6 +47,7 @@ export function Sheet({
   footer,
   className,
   hideClose,
+  dismissible = true,
 }: SheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [dragY, setDragY] = useState(0);
@@ -41,11 +57,11 @@ export function Sheet({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && dismissible) onClose();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, onClose, dismissible]);
 
   // Lock body scroll while open, and restore the exact previous value
   useEffect(() => {
@@ -91,7 +107,7 @@ export function Sheet({
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <div
         className="absolute inset-0 bg-black/40 animate-fade-in"
-        onClick={onClose}
+        onClick={dismissible ? onClose : undefined}
         aria-hidden="true"
       />
       <div
@@ -123,7 +139,7 @@ export function Sheet({
             if (delta > 0) setDragY(delta);
           }}
           onTouchEnd={() => {
-            if (dragY > 100) onClose();
+            if (dragY > 100 && dismissible) onClose();
             else setDragY(0);
             startY.current = null;
           }}
