@@ -73,6 +73,8 @@ export function AiFoodLogSheet({
   const [consenting, setConsenting] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
+  /** An analysis is in flight. See run() — a second press must not start one. */
+  const runningRef = useRef(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   /** When recording began, so the real clip length can be reported. */
   const recordStartRef = useRef<number>(0);
@@ -111,9 +113,29 @@ export function AiFoodLogSheet({
 
   const run = useCallback(
     async (input: Parameters<typeof analyze>[0]) => {
+      /*
+       * ONE ANALYSIS AT A TIME, REFUSED AT THE DOOR.
+       *
+       * Found by double-clicking "Find these foods" in a browser. Two presses
+       * 120 ms apart sent TWO /analyze requests: React had not yet swapped
+       * the chooser for the loading view, so the button was still mounted and
+       * still live. The second call then overwrote `abortRef.current` with
+       * its own controller, orphaning the first request — which the server
+       * carries on with and bills in full — and the member was left with the
+       * sheet closed and nothing logged.
+       *
+       * So a double click cost two OpenAI calls and produced no meal. Setting
+       * `disabled` on the button is not enough on its own: the race is inside
+       * React's render, not inside the click handler, and the photo and voice
+       * paths can reach here without a button at all.
+       */
+      if (runningRef.current) return;
+      runningRef.current = true;
+
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         setError({ code: 'offline', message: t('aiFood.error.offline'), fallback: 'manual' });
         setStep('error');
+        runningRef.current = false;
         return;
       }
 
@@ -153,6 +175,9 @@ export function AiFoodLogSheet({
         clearTimeout(slowTimer);
         clearTimeout(giveUpTimer);
         abortRef.current = null;
+        // Cancelling aborts the request, which throws, which lands here — so
+        // the member can start another one straight afterwards.
+        runningRef.current = false;
       }
     },
     [t],

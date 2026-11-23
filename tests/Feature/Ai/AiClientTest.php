@@ -246,6 +246,95 @@ class AiClientTest extends TestCase
         $this->analyze($this->member());
     }
 
+    /**
+     * A fake that throws a transport failure the first $failures times.
+     *
+     * Counted here rather than with Http::assertSentCount, because a request
+     * that throws on the way out is never recorded as sent — so the assertion
+     * would read zero whether it was attempted once or twice.
+     *
+     * @param  callable():array  $thenReturn
+     * @return object{attempts:int}
+     */
+    private function failingTransport(int $failures, string $message, callable $thenReturn): object
+    {
+        $counter = new class { public int $attempts = 0; };
+
+        Http::fake(['*/responses' => function () use ($counter, $failures, $message, $thenReturn) {
+            $counter->attempts++;
+
+            if ($counter->attempts <= $failures) {
+                throw new \Illuminate\Http\Client\ConnectionException($message);
+            }
+
+            return Http::response($thenReturn());
+        }]);
+
+        return $counter;
+    }
+
+    private function goodDraft(): array
+    {
+        return $this->envelope(['items' => [['label' => 'toast', 'grams' => 30, 'confidence' => 'medium']]]);
+    }
+
+    public function test_never_reaching_the_provider_is_retried(): void
+    {
+        /*
+         * Nothing is in flight and nothing has been billed, so a second
+         * attempt a moment later is cheap and often works.
+         */
+        $calls = $this->failingTransport(1, 'Connection refused', fn () => $this->goodDraft());
+
+        $result = $this->analyze($this->member());
+
+        $this->assertSame('toast', $result['items'][0]['label']);
+        $this->assertSame(2, $calls->attempts);
+    }
+
+    public function test_a_text_timeout_is_retried_because_a_second_try_still_fits(): void
+    {
+        /*
+         * 25 s + backoff + 25 s is about 51 seconds, and the browser waits 60.
+         * The measured spread on this path is a median of 5.5 s against that
+         * 25 s ceiling, so a timeout here is a bad moment rather than a slow
+         * model — exactly the case a retry is for.
+         */
+        config(['ai.timeouts.text' => 25]);
+
+        $calls = $this->failingTransport(1, 'cURL error 28: Operation timed out', fn () => $this->goodDraft());
+
+        $this->analyze($this->member());
+
+        $this->assertSame(2, $calls->attempts, 'a text timeout was not retried');
+    }
+
+    public function test_a_vision_timeout_is_not_retried_because_a_second_try_does_not_fit(): void
+    {
+        /*
+         * 45 s + backoff + 45 s is 91 seconds. The browser gave up at 60, so a
+         * second attempt is a PHP worker held open for an answer nobody is
+         * waiting for — on a host that has very few of them.
+         */
+        config(['ai.timeouts.vision' => 45]);
+
+        $calls = $this->failingTransport(5, 'cURL error 28: Operation timed out', fn () => $this->goodDraft());
+
+        try {
+            app(AiClient::class)->structured(
+                'food_analyze_image',
+                [['role' => 'user', 'content' => 'a photo']],
+                self::SCHEMA,
+                'food_items',
+                $this->member(),
+                'vision',
+            );
+            $this->fail('expected AiUnavailable');
+        } catch (AiUnavailable) {
+            $this->assertSame(1, $calls->attempts, 'a vision timeout was retried past what the browser waits for');
+        }
+    }
+
     public function test_it_applies_the_configured_timeout(): void
     {
         config(['ai.timeouts.text' => 25, 'ai.timeouts.connect' => 8]);

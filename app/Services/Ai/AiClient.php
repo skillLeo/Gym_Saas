@@ -33,6 +33,21 @@ use Illuminate\Support\Facades\Log;
  */
 class AiClient
 {
+    /**
+     * How long the browser will wait before it stops caring.
+     *
+     * `frontend/src/lib/aiFoodLog.ts` sets a 60-second axios timeout on the
+     * analyse call. Work that runs past it is work nobody is waiting for: the
+     * member has an error on screen and a manual-logging button, while a PHP
+     * worker on a host with few of them is still held open.
+     *
+     * 55, not 60, to leave the response room to get back through the app. It
+     * is what separates the two cases: text is 25 s, so two attempts and the
+     * backoff come to 51.2 and fit; vision and transcription are 45 s, so two
+     * come to 91.2 and do not.
+     */
+    private const CLIENT_PATIENCE_SECONDS = 55;
+
     public function __construct(
         private readonly AiGate $gate,
         private readonly JsonSchemaValidator $validator,
@@ -251,7 +266,8 @@ class AiClient
 
     /**
      * One HTTP attempt, plus one retry on 429, 5xx, or never reaching the
-     * provider at all. NOT on a read timeout — see the catch block for why.
+     * provider at all. A read timeout is retried only if a second attempt
+     * still fits inside what the browser will wait for — see the catch block.
      *
      * Returns `[Response, null]` on success or `[null, string]` on failure, in
      * preference to throwing, so that the caller can log the usage row with an
@@ -268,8 +284,9 @@ class AiClient
         int $timeout,
         ?array $attachment = null,
     ): array {
-        $attempts = max(1, (int) config('ai.retry.attempts'));
+        $attempts  = max(1, (int) config('ai.retry.attempts'));
         $lastError = 'AI request failed.';
+        $startedAt = microtime(true);
 
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
             try {
@@ -323,31 +340,53 @@ class AiClient
                  * DNS, TLS, connection reset — or a read timeout, which is a
                  * different thing wearing the same exception.
                  *
-                 * A READ TIMEOUT IS NOT RETRIED. The provider took our
-                 * request and is working on it; asking again does not make the
-                 * first one stop, so it costs a second call and doubles the
-                 * wait for an answer that was already late. On the vision
-                 * path that is 45s + 1.2s + 45s = 91 seconds of a PHP worker
-                 * on a host with few of them — for a browser that gave up at
-                 * 60 and a member who has long since moved on.
+                 * NEVER REACHING THE PROVIDER is cheap to retry: no request is
+                 * in flight, nothing has been billed, and a second attempt a
+                 * moment later genuinely does get through a blip.
                  *
-                 * Never reaching the provider at all is the opposite case: no
-                 * request is in flight, nothing has been billed, and a second
-                 * attempt a moment later genuinely does succeed through a
-                 * blip. That one is still retried.
+                 * A READ TIMEOUT is not that. The provider took our request
+                 * and is working on it; asking again does not make the first
+                 * one stop, so it costs a second call and doubles the wait for
+                 * an answer that was already late — and the member is watching
+                 * a browser that gives up at 60 seconds.
+                 *
+                 * So a timeout is retried only when a second attempt still
+                 * fits inside that. For text (25 s) it does: 25 + 1.2 + 25 is
+                 * 51 seconds, and the measured spread is a median of 5.5 s
+                 * against a 25 s ceiling, so a timeout there really is a bad
+                 * moment rather than a slow model. For vision (45 s) it does
+                 * not: 45 + 1.2 + 45 is 91 seconds of a PHP worker, on a host
+                 * with few of them, for a member who left thirty seconds ago.
+                 *
+                 * Refusing both — which this did first — threw away the one
+                 * that was worth having.
                  */
                 $timedOut = $this->isTimeout($e);
+                $elapsed  = microtime(true) - $startedAt;
+
+                /*
+                 * Judged on the CONFIGURED timeout, not on how long this
+                 * attempt actually took. For a timeout those are the same
+                 * number by definition, and using the measured one makes the
+                 * rule untestable — a fake that fails instantly then "fits"
+                 * and retries, which is the opposite of what happens in
+                 * production.
+                 */
+                $wouldFit = ($timeout * 2) + ((int) config('ai.retry.backoff_ms') / 1000)
+                    <= self::CLIENT_PATIENCE_SECONDS;
 
                 Log::warning('AI request could not be completed', [
-                    'path'      => $path,
-                    'exception' => $e::class,
-                    'attempt'   => $attempt,
-                    'timed_out' => $timedOut,
+                    'path'       => $path,
+                    'exception'  => $e::class,
+                    'attempt'    => $attempt,
+                    'timed_out'  => $timedOut,
+                    'elapsed_ms' => (int) round($elapsed * 1000),
+                    'retrying'   => ! $timedOut || $wouldFit,
                 ]);
 
                 $lastError = 'Could not reach the AI provider.';
 
-                if ($timedOut) {
+                if ($timedOut && ! $wouldFit) {
                     return [null, $lastError];
                 }
             }
